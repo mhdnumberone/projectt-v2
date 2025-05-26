@@ -266,7 +266,7 @@ class EnhancedFileTransferManager(private val context: Context) {
                             if (retryCount >= MAX_RETRIES) {
                                 throw e
                             }
-                            delay(1000 * retryCount) // Exponential backoff
+                            delay(1000L * retryCount) // Exponential backoff
                         }
                     }
                     
@@ -281,7 +281,7 @@ class EnhancedFileTransferManager(private val context: Context) {
                     
                     // Respect battery and network conditions
                     if (SmartResourceMonitor.shouldLimitOperations(context)) {
-                        delay(500) // Slow down if battery is low
+                        delay(500L) // Slow down if battery is low
                     }
                 }
             }
@@ -393,7 +393,7 @@ class EnhancedFileTransferManager(private val context: Context) {
                         
                         // Respect battery and network conditions
                         if (SmartResourceMonitor.shouldLimitOperations(context)) {
-                            delay(100) // Slow down if battery is low
+                            delay(100L) // Slow down if battery is low
                         }
                     }
                 }
@@ -460,7 +460,7 @@ class EnhancedFileTransferManager(private val context: Context) {
                     }
                     
                     // Small delay between transfers
-                    delay(100)
+                    delay(100L)
                 }
             } finally {
                 isProcessingQueue = false
@@ -1230,7 +1230,7 @@ class IntelligentSyncQueue(private val context: Context) {
             while (priorityQueue.isNotEmpty() && !SmartResourceMonitor.shouldLimitOperations(context)) {
                 val task = priorityQueue.removeFirst()
                 processTask(task, onProgress)?.let { results.add(it) }
-                delay(100)
+                delay(100L)
             }
             
             val batchSize = SmartResourceMonitor.getOptimalBatchSize(context)
@@ -1240,7 +1240,7 @@ class IntelligentSyncQueue(private val context: Context) {
                 val task = syncQueue.removeFirst()
                 processTask(task, onProgress)?.let { results.add(it) }
                 processed++
-                delay(50)
+                delay(50L)
             }
             
         } finally {
