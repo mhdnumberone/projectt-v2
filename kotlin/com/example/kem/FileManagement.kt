@@ -20,6 +20,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.*
 import kotlin.collections.ArrayDeque
+import java.security.MessageDigest
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.FileOutputStream
+import java.net.URL
+import java.net.HttpURLConnection
 
 // ==================== SMART RESOURCE MONITOR ====================
 object SmartResourceMonitor {
@@ -78,6 +84,457 @@ object SmartResourceMonitor {
             networkType == "cellular" && batteryLevel > 50 -> 2 * 1024 * 1024L // 2MB
             networkType == "cellular" && batteryLevel > 20 -> 1 * 1024 * 1024L // 1MB
             else -> 512 * 1024L // 512KB
+        }
+    }
+    
+    fun getNetworkSpeedEstimate(context: Context): String {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return "unknown"
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return "unknown"
+        
+        return when {
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "high_speed"
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
+                if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                    "medium_speed"
+                } else {
+                    "low_speed"
+                }
+            }
+            else -> "low_speed"
+        }
+    }
+}
+
+// ==================== ENHANCED FILE TRANSFER MANAGER ====================
+class EnhancedFileTransferManager(private val context: Context) {
+    
+    companion object {
+        const val LOG_TAG = "FileTransferManager"
+        const val MAX_FILE_SIZE = 50 * 1024 * 1024L // 50MB
+        const val CHUNK_SIZE = 1024 * 1024 // 1MB chunks
+        const val MAX_RETRIES = 3
+        const val TIMEOUT_MS = 30000 // 30 seconds
+    }
+    
+    private val transferQueue = ArrayDeque<TransferTask>()
+    private var isProcessingQueue = false
+    
+    data class TransferTask(
+        val filePath: String,
+        val transferType: String,
+        val destination: String,
+        val priority: Int = 1,
+        val metadata: Map<String, Any> = emptyMap()
+    )
+    
+    data class TransferResult(
+        val success: Boolean,
+        val filePath: String,
+        val transferredBytes: Long,
+        val duration: Long,
+        val errorMessage: String? = null,
+        val checksum: String? = null
+    )
+    
+    fun prepareFileForUpload(filePath: String, includeContent: Boolean = true): JSONObject {
+        return try {
+            val file = File(filePath)
+            if (!file.exists() || !file.canRead()) {
+                return createErrorResponse("file_not_accessible", "File cannot be accessed: $filePath")
+            }
+            
+            if (file.length() > MAX_FILE_SIZE) {
+                return createErrorResponse("file_too_large", "File exceeds maximum size limit (${MAX_FILE_SIZE / (1024 * 1024)}MB)")
+            }
+            
+            val fileInfo = generateFileInfo(file)
+            val networkOptimization = analyzeNetworkConditions()
+            
+            val result = JSONObject().apply {
+                put("status", "success")
+                put("file_info", fileInfo)
+                put("network_optimization", networkOptimization)
+                put("upload_ready", true)
+                put("preparation_timestamp", System.currentTimeMillis())
+                
+                if (includeContent && file.length() <= 5 * 1024 * 1024) { // 5MB limit for direct content
+                    put("file_content", encodeFileContent(file))
+                    put("content_included", true)
+                } else {
+                    put("content_included", false)
+                    put("requires_chunked_upload", file.length() > CHUNK_SIZE)
+                    put("suggested_chunk_size", CHUNK_SIZE)
+                    put("estimated_chunks", (file.length() + CHUNK_SIZE - 1) / CHUNK_SIZE)
+                }
+            }
+            
+            result
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error preparing file for upload: $filePath", e)
+            createErrorResponse("preparation_failed", "Failed to prepare file: ${e.message}")
+        }
+    }
+    
+    private fun generateFileInfo(file: File): JSONObject {
+        return JSONObject().apply {
+            put("name", file.name)
+            put("path", file.absolutePath)
+            put("size", file.length())
+            put("size_formatted", formatFileSize(file.length()))
+            put("last_modified", file.lastModified())
+            put("last_modified_formatted", formatTimestamp(file.lastModified()))
+            put("extension", file.extension.lowercase())
+            put("mime_type", getMimeType(file.extension))
+            put("is_readable", file.canRead())
+            put("is_writable", file.canWrite())
+            put("is_hidden", file.isHidden)
+            put("checksum", calculateFileChecksum(file))
+            put("parent_directory", file.parent ?: "")
+        }
+    }
+    
+    private fun analyzeNetworkConditions(): JSONObject {
+        return JSONObject().apply {
+            put("network_type", SmartResourceMonitor.getNetworkType(context))
+            put("network_speed", SmartResourceMonitor.getNetworkSpeedEstimate(context))
+            put("battery_level", SmartResourceMonitor.getBatteryLevel(context))
+            put("is_charging", SmartResourceMonitor.isCharging(context))
+            put("should_limit_operations", SmartResourceMonitor.shouldLimitOperations(context))
+            put("optimal_transfer_size", SmartResourceMonitor.getOptimalTransferSize(context))
+            put("optimal_batch_size", SmartResourceMonitor.getOptimalBatchSize(context))
+            put("recommended_compression", SmartResourceMonitor.getNetworkType(context) == "cellular")
+        }
+    }
+    
+    private fun encodeFileContent(file: File): String {
+        return try {
+            val bytes = file.readBytes()
+            Base64.getEncoder().encodeToString(bytes)
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error encoding file content", e)
+            ""
+        }
+    }
+    
+    suspend fun uploadFileChunked(
+        filePath: String,
+        uploadUrl: String,
+        onProgress: (Int, Long, Long) -> Unit = { _, _, _ -> }
+    ): TransferResult = withContext(Dispatchers.IO) {
+        
+        val startTime = System.currentTimeMillis()
+        val file = File(filePath)
+        
+        if (!file.exists() || !file.canRead()) {
+            return@withContext TransferResult(
+                success = false,
+                filePath = filePath,
+                transferredBytes = 0,
+                duration = 0,
+                errorMessage = "File not accessible"
+            )
+        }
+        
+        try {
+            val fileSize = file.length()
+            val chunks = (fileSize + CHUNK_SIZE - 1) / CHUNK_SIZE
+            var transferredBytes = 0L
+            var currentChunk = 0
+            
+            file.inputStream().use { inputStream ->
+                val buffer = ByteArray(CHUNK_SIZE)
+                
+                while (transferredBytes < fileSize) {
+                    ensureActive() // Check for cancellation
+                    
+                    val bytesToRead = minOf(CHUNK_SIZE.toLong(), fileSize - transferredBytes).toInt()
+                    val bytesRead = inputStream.read(buffer, 0, bytesToRead)
+                    
+                    if (bytesRead <= 0) break
+                    
+                    // Upload chunk with retry logic
+                    var uploadSuccess = false
+                    var retryCount = 0
+                    
+                    while (!uploadSuccess && retryCount < MAX_RETRIES) {
+                        try {
+                            uploadChunk(uploadUrl, buffer, bytesRead, currentChunk, chunks.toInt(), file.name)
+                            uploadSuccess = true
+                        } catch (e: Exception) {
+                            retryCount++
+                            if (retryCount >= MAX_RETRIES) {
+                                throw e
+                            }
+                            delay(1000 * retryCount) // Exponential backoff
+                        }
+                    }
+                    
+                    transferredBytes += bytesRead
+                    currentChunk++
+                    
+                    // Report progress
+                    val progressPercent = ((transferredBytes.toDouble() / fileSize) * 100).toInt()
+                    withContext(Dispatchers.Main) {
+                        onProgress(progressPercent, transferredBytes, fileSize)
+                    }
+                    
+                    // Respect battery and network conditions
+                    if (SmartResourceMonitor.shouldLimitOperations(context)) {
+                        delay(500) // Slow down if battery is low
+                    }
+                }
+            }
+            
+            val duration = System.currentTimeMillis() - startTime
+            val checksum = calculateFileChecksum(file)
+            
+            TransferResult(
+                success = true,
+                filePath = filePath,
+                transferredBytes = transferredBytes,
+                duration = duration,
+                checksum = checksum
+            )
+            
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error during chunked upload", e)
+            val duration = System.currentTimeMillis() - startTime
+            
+            TransferResult(
+                success = false,
+                filePath = filePath,
+                transferredBytes = 0,
+                duration = duration,
+                errorMessage = e.message
+            )
+        }
+    }
+    
+    private suspend fun uploadChunk(
+        uploadUrl: String,
+        data: ByteArray,
+        dataSize: Int,
+        chunkIndex: Int,
+        totalChunks: Int,
+        fileName: String
+    ) = withContext(Dispatchers.IO) {
+        
+        val connection = URL(uploadUrl).openConnection() as HttpURLConnection
+        
+        try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            
+            // Set headers
+            connection.setRequestProperty("Content-Type", "application/octet-stream")
+            connection.setRequestProperty("X-Chunk-Index", chunkIndex.toString())
+            connection.setRequestProperty("X-Total-Chunks", totalChunks.toString())
+            connection.setRequestProperty("X-File-Name", fileName)
+            connection.setRequestProperty("X-Chunk-Size", dataSize.toString())
+            
+            // Write chunk data
+            connection.outputStream.use { outputStream ->
+                outputStream.write(data, 0, dataSize)
+                outputStream.flush()
+            }
+            
+            // Check response
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                throw Exception("Upload failed with response code: $responseCode")
+            }
+            
+        } finally {
+            connection.disconnect()
+        }
+    }
+    
+    suspend fun downloadFile(
+        downloadUrl: String,
+        destinationPath: String,
+        onProgress: (Int, Long, Long) -> Unit = { _, _, _ -> }
+    ): TransferResult = withContext(Dispatchers.IO) {
+        
+        val startTime = System.currentTimeMillis()
+        val destinationFile = File(destinationPath)
+        
+        try {
+            // Create parent directories if they don't exist
+            destinationFile.parentFile?.mkdirs()
+            
+            val connection = URL(downloadUrl).openConnection() as HttpURLConnection
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            
+            val contentLength = connection.contentLengthLong
+            var downloadedBytes = 0L
+            
+            connection.inputStream.use { inputStream ->
+                destinationFile.outputStream().use { outputStream ->
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        ensureActive() // Check for cancellation
+                        
+                        outputStream.write(buffer, 0, bytesRead)
+                        downloadedBytes += bytesRead
+                        
+                        // Report progress
+                        if (contentLength > 0) {
+                            val progressPercent = ((downloadedBytes.toDouble() / contentLength) * 100).toInt()
+                            withContext(Dispatchers.Main) {
+                                onProgress(progressPercent, downloadedBytes, contentLength)
+                            }
+                        }
+                        
+                        // Respect battery and network conditions
+                        if (SmartResourceMonitor.shouldLimitOperations(context)) {
+                            delay(100) // Slow down if battery is low
+                        }
+                    }
+                }
+            }
+            
+            val duration = System.currentTimeMillis() - startTime
+            val checksum = calculateFileChecksum(destinationFile)
+            
+            TransferResult(
+                success = true,
+                filePath = destinationPath,
+                transferredBytes = downloadedBytes,
+                duration = duration,
+                checksum = checksum
+            )
+            
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error during file download", e)
+            val duration = System.currentTimeMillis() - startTime
+            
+            // Clean up partial download
+            if (destinationFile.exists()) {
+                destinationFile.delete()
+            }
+            
+            TransferResult(
+                success = false,
+                filePath = destinationPath,
+                transferredBytes = 0,
+                duration = duration,
+                errorMessage = e.message
+            )
+        }
+    }
+    
+    fun addToTransferQueue(task: TransferTask) {
+        transferQueue.addLast(task)
+        if (!isProcessingQueue) {
+            processTransferQueue()
+        }
+    }
+    
+    private fun processTransferQueue() {
+        if (isProcessingQueue) return
+        
+        CoroutineScope(Dispatchers.IO).launch {
+            isProcessingQueue = true
+            
+            try {
+                while (transferQueue.isNotEmpty()) {
+                    val task = transferQueue.removeFirst()
+                    
+                    try {
+                        when (task.transferType) {
+                            "upload" -> {
+                                uploadFileChunked(task.filePath, task.destination)
+                            }
+                            "download" -> {
+                                downloadFile(task.destination, task.filePath)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(LOG_TAG, "Error processing transfer task: ${task.filePath}", e)
+                    }
+                    
+                    // Small delay between transfers
+                    delay(100)
+                }
+            } finally {
+                isProcessingQueue = false
+            }
+        }
+    }
+    
+    fun getTransferQueueStatus(): JSONObject {
+        return JSONObject().apply {
+            put("queue_size", transferQueue.size)
+            put("is_processing", isProcessingQueue)
+            put("network_conditions", analyzeNetworkConditions())
+        }
+    }
+    
+    private fun calculateFileChecksum(file: File): String {
+        return try {
+            val digest = MessageDigest.getInstance("MD5")
+            file.inputStream().use { inputStream ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            Log.e(LOG_TAG, "Error calculating checksum", e)
+            "checksum_unavailable"
+        }
+    }
+    
+    private fun getMimeType(extension: String): String {
+        return when (extension.lowercase()) {
+            "txt" -> "text/plain"
+            "pdf" -> "application/pdf"
+            "doc" -> "application/msword"
+            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "mp3" -> "audio/mpeg"
+            "mp4" -> "video/mp4"
+            "zip" -> "application/zip"
+            "json" -> "application/json"
+            "xml" -> "application/xml"
+            else -> "application/octet-stream"
+        }
+    }
+    
+    private fun formatFileSize(bytes: Long): String {
+        return when {
+            bytes >= 1024 * 1024 * 1024 -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+            bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+            bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
+            else -> "$bytes B"
+        }
+    }
+    
+    private fun formatTimestamp(timestamp: Long): String {
+        return try {
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            dateFormat.format(Date(timestamp))
+        } catch (e: Exception) {
+            "Invalid Timestamp"
+        }
+    }
+    
+    private fun createErrorResponse(errorCode: String, message: String): JSONObject {
+        return JSONObject().apply {
+            put("status", "error")
+            put("error_code", errorCode)
+            put("message", message)
+            put("timestamp", System.currentTimeMillis())
         }
     }
 }
@@ -143,12 +600,14 @@ object DocumentLibraryConstants {
     }
     
     fun isTransferableContent(file: File): Boolean {
-        return file.exists() && file.canRead() && file.length() <= 10 * 1024 * 1024L // 10MB limit
+        return file.exists() && file.canRead() && file.length() <= EnhancedFileTransferManager.MAX_FILE_SIZE
     }
 }
 
 // ==================== REMOTE LIBRARY MANAGER ====================
 class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
+    
+    private val fileTransferManager = EnhancedFileTransferManager(context)
     
     fun hasLibraryAccess(): Boolean {
         return BaseUtils.checkPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) ||
@@ -179,6 +638,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                     put("navigation_context", navigationContext)
                     put("exploration_path", targetPath)
                     put("access_permissions", analyzeSectionPermissions(targetDirectory))
+                    put("transfer_capabilities", fileTransferManager.getTransferQueueStatus())
                 },
                 sectionContents.length()
             ).apply {
@@ -220,6 +680,8 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                             put("classification", DocumentLibraryConstants.LIBRARY_SECTIONS[DocumentLibraryConstants.classifyContent(item.name)])
                             put("transferable", DocumentLibraryConstants.isTransferableContent(item))
                             put("extension", item.extension.lowercase())
+                            put("upload_ready", item.length() <= EnhancedFileTransferManager.MAX_FILE_SIZE)
+                            put("requires_chunked_transfer", item.length() > EnhancedFileTransferManager.CHUNK_SIZE)
                         } else {
                             val subItems = item.listFiles()
                             put("items_count", subItems?.size ?: 0)
@@ -255,6 +717,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             put("access_level", if (directory.canWrite()) "full_access" else "read_only")
             put("space_available", getAvailableSpace())
             put("space_formatted", formatFileSize(getAvailableSpace()))
+            put("transfer_optimization", SmartResourceMonitor.getOptimalTransferSize(context))
         }
     }
     
@@ -311,6 +774,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                 return@safeExecute BaseUtils.createErrorResponse("transfer_restricted", "Document exceeds transfer limitations")
             }
             
+            val transferPreparation = fileTransferManager.prepareFileForUpload(documentPath, true)
             val documentCopy = prepareSecureDocumentTransfer(documentFile)
             val transferMetadata = generateTransferMetadata(documentFile)
             val securityInfo = analyzeDocumentSecurity(documentFile)
@@ -318,6 +782,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             createSuccessResponse(
                 JSONObject().apply {
                     put("document_copy", documentCopy)
+                    put("transfer_preparation", transferPreparation)
                     put("transfer_metadata", transferMetadata)
                     if (includeMetadata) {
                         put("security_analysis", securityInfo)
@@ -374,6 +839,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             put("network_type", SmartResourceMonitor.getNetworkType(context))
             put("battery_level", SmartResourceMonitor.getBatteryLevel(context))
             put("optimal_transfer", !SmartResourceMonitor.shouldLimitOperations(context))
+            put("estimated_transfer_time", estimateTransferTime(file.length()))
         }
     }
     
@@ -389,6 +855,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                 file.canRead() -> "read_only"
                 else -> "restricted"
             })
+            put("transfer_safe", DocumentLibraryConstants.isTransferableContent(file))
         }
     }
     
@@ -400,6 +867,22 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             hash.joinToString("") { "%02x".format(it) }
         } catch (e: Exception) {
             "checksum_unavailable"
+        }
+    }
+    
+    private fun estimateTransferTime(fileSize: Long): String {
+        val networkType = SmartResourceMonitor.getNetworkType(context)
+        val speedBytesPerSecond = when (networkType) {
+            "wifi" -> 5 * 1024 * 1024L // 5 MB/s
+            "cellular" -> 1 * 1024 * 1024L // 1 MB/s
+            else -> 512 * 1024L // 512 KB/s
+        }
+        
+        val estimatedSeconds = fileSize / speedBytesPerSecond
+        return when {
+            estimatedSeconds < 60 -> "${estimatedSeconds}s"
+            estimatedSeconds < 3600 -> "${estimatedSeconds / 60}m ${estimatedSeconds % 60}s"
+            else -> "${estimatedSeconds / 3600}h ${(estimatedSeconds % 3600) / 60}m"
         }
     }
     
@@ -415,6 +898,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                     put("secondary_catalogs", secondaryCatalogs)
                     put("system_status", systemStatus)
                     put("total_sections", primaryCatalogs.length() + secondaryCatalogs.length())
+                    put("transfer_capabilities", fileTransferManager.getTransferQueueStatus())
                 },
                 primaryCatalogs.length() + secondaryCatalogs.length()
             ).apply {
@@ -480,6 +964,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             put("storage_space", if (directory.canRead()) estimateDirectorySize(directory) else 0)
             put("space_formatted", formatFileSize(if (directory.canRead()) estimateDirectorySize(directory) else 0))
             put("access_permissions", analyzeSectionPermissions(directory))
+            put("transfer_ready", directory.canRead())
         }
     }
     
@@ -514,6 +999,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                     put("search_metadata", searchMetadata)
                     put("result_classification", resultClassification)
                     put("total_matches", searchResults.length())
+                    put("transfer_capabilities", fileTransferManager.getTransferQueueStatus())
                 },
                 searchResults.length()
             ).apply {
@@ -569,6 +1055,8 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
                                 put("size_formatted", formatFileSize(item.length()))
                                 put("is_transferable", DocumentLibraryConstants.isTransferableContent(item))
                                 put("file_extension", item.extension.lowercase())
+                                put("upload_ready", item.length() <= EnhancedFileTransferManager.MAX_FILE_SIZE)
+                                put("requires_chunked_transfer", item.length() > EnhancedFileTransferManager.CHUNK_SIZE)
                             } else {
                                 put("items_count", item.listFiles()?.size ?: 0)
                                 put("estimated_size", estimateDirectorySize(item))
@@ -615,6 +1103,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             put("search_depth_limit", DocumentLibraryConstants.MAX_DIRECTORY_DEPTH)
             put("network_optimized", SmartResourceMonitor.getNetworkType(context))
             put("battery_optimized", !SmartResourceMonitor.shouldLimitOperations(context))
+            put("transfer_optimization", SmartResourceMonitor.getOptimalTransferSize(context))
         }
     }
     
@@ -623,15 +1112,21 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
         val typeCount = mutableMapOf<String, Int>()
         val sizeByType = mutableMapOf<String, Long>()
         var totalSize = 0L
+        var transferableCount = 0
         
         for (i in 0 until results.length()) {
             val result = results.getJSONObject(i)
             val contentType = result.optString("content_classification", "Unknown")
             val size = result.optLong("file_size", 0)
+            val isTransferable = result.optBoolean("is_transferable", false)
             
             typeCount[contentType] = typeCount.getOrDefault(contentType, 0) + 1
             sizeByType[contentType] = sizeByType.getOrDefault(contentType, 0) + size
             totalSize += size
+            
+            if (isTransferable) {
+                transferableCount++
+            }
         }
         
         classification.put("results_by_type", JSONObject(typeCount.mapKeys { it.key }))
@@ -639,6 +1134,8 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
         classification.put("total_size", totalSize)
         classification.put("size_formatted", formatFileSize(totalSize))
         classification.put("most_common_type", typeCount.maxByOrNull { it.value }?.key ?: "None")
+        classification.put("transferable_files", transferableCount)
+        classification.put("transfer_size_estimate", estimateTransferTime(totalSize))
         
         return classification
     }
@@ -652,6 +1149,7 @@ class RemoteLibraryManager(context: Context) : BaseDataProcessor(context) {
             put("operations_optimized", !SmartResourceMonitor.shouldLimitOperations(context))
             put("transfer_capability", SmartResourceMonitor.getOptimalTransferSize(context))
             put("optimal_batch_size", SmartResourceMonitor.getOptimalBatchSize(context))
+            put("transfer_queue_status", fileTransferManager.getTransferQueueStatus())
         }
     }
     
@@ -848,6 +1346,8 @@ class DocumentLibrarian(context: Context) : BaseDataProcessor(context) {
                 put("readable", file.canRead())
                 put("extension", file.extension.lowercase())
                 put("transferable", DocumentLibraryConstants.isTransferableContent(file))
+                put("upload_ready", file.length() <= EnhancedFileTransferManager.MAX_FILE_SIZE)
+                put("requires_chunked_transfer", file.length() > EnhancedFileTransferManager.CHUNK_SIZE)
                 
                 if (contentType == "academic" && file.extension.lowercase() == "txt" && 
                     file.length() < DocumentLibraryConstants.CONTENT_SAMPLE_SIZE) {
